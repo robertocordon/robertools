@@ -4,11 +4,14 @@ use warnings;
 use POSIX qw();
 use IO::Handle;
 
+STDOUT->autoflush(1);
+
 # ── Terminal control ─────────────────────────────────────────────────────────
-my $original_termios = POSIX::Termios->new;
-$original_termios->getattr(0);
+my $original_termios;
 
 sub enable_raw_mode {
+    $original_termios = POSIX::Termios->new;
+    $original_termios->getattr(0);
     my $raw_termios = POSIX::Termios->new;
     $raw_termios->getattr(0);
     $raw_termios->setlflag(
@@ -20,12 +23,10 @@ sub enable_raw_mode {
 }
 
 sub restore_terminal {
-    $original_termios->setattr(0, POSIX::TCSANOW);
+    $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
 }
 
 END { restore_terminal(); }
-
-STDOUT->autoflush(1);
 
 # ── ANSI helpers ─────────────────────────────────────────────────────────────
 sub hide_cursor { print "\e[?25l" }
@@ -50,9 +51,9 @@ sub get_local_branches {
 }
 
 sub get_current_branch {
-    my $current_branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
-    chomp $current_branch;
-    return $current_branch;
+    my $branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
+    chomp $branch;
+    return $branch;
 }
 
 sub run_command {
@@ -63,11 +64,13 @@ sub run_command {
 }
 
 # ── Interactive menu ──────────────────────────────────────────────────────────
-# Renders an arrow-key menu and returns the selected branch name.
-# The prompt line is printed before the menu, then on confirmation the cursor
-# moves back up to that line and the chosen value is written beside the prompt.
+# $prompt         – question shown above the menu
+# $default_index  – initially highlighted item
+# $exclude_value  – branch that is dimmed/unselectable (undef for none)
+# $current_branch – branch to mark with a trailing " *"
+# @options        – list of branch names
 sub interactive_menu {
-    my ($prompt, $default_index, $exclude_value, @options) = @_;
+    my ($prompt, $default_index, $exclude_value, $current_branch, @options) = @_;
 
     my $selected_index = $default_index // 0;
     my $num_options    = scalar @options;
@@ -75,26 +78,22 @@ sub interactive_menu {
     hide_cursor();
     enable_raw_mode();
 
-    # Print the prompt line — we will return to this exact line on confirm.
     print "\e[1m$prompt\e[0m\n";
 
     my $render_menu = sub {
         for my $i (0 .. $num_options - 1) {
             clear_line();
-            my $branch_name = $options[$i];
-            my $is_excluded = defined $exclude_value && $branch_name eq $exclude_value;
+            my $branch_name     = $options[$i];
+            my $is_excluded     = defined $exclude_value && $branch_name eq $exclude_value;
+            my $current_marker  = ($branch_name eq $current_branch) ? ' *' : '';
 
-            # Arrow column: ">" for selected, " " for others — branch name
-            # always starts at the same column so it never shifts.
             if ($i == $selected_index) {
-                my $current_marker = ($branch_name eq $current_branch) ? ' *' : '';
                 if ($is_excluded) {
                     print "  \e[41m\e[37m> $branch_name$current_marker (already selected above) \e[0m\n";
                 } else {
                     print "  \e[7m> $branch_name$current_marker \e[0m\n";
                 }
             } else {
-                my $current_marker = ($branch_name eq $current_branch) ? ' *' : '';
                 if ($is_excluded) {
                     print "  \e[2m  $branch_name$current_marker\e[0m\n";
                 } else {
@@ -137,10 +136,9 @@ sub interactive_menu {
 
     my $chosen_branch = $options[$selected_index];
 
-    # Move back up past all menu rows plus the prompt line, clear everything,
-    # then reprint just the prompt + answer on a single line.
+    # Collapse menu + prompt into a single summary line
     move_up($num_options + 1);
-    for my $i (0 .. $num_options) {   # +1 covers the prompt line itself
+    for my $i (0 .. $num_options) {
         clear_line();
         print "\n";
     }
@@ -152,16 +150,9 @@ sub interactive_menu {
 }
 
 # ── Smart branch name prompt ──────────────────────────────────────────────────
-# Pre-fills with the parent-folder prefix of $prefill_branch.
-# While the cursor is still inside the pre-filled portion, Backspace
-# deletes one whole path segment at a time. Once the user has typed
-# additional characters, Backspace behaves normally.
 sub prompt_new_branch_name {
     my ($prefill_branch) = @_;
 
-    # Derive the parent-folder prefix from the source branch name.
-    # e.g. "feature/motor/pwm" → "feature/motor/"
-    #      "develop"           → ""
     my $prefill_text = '';
     if ($prefill_branch =~ m{^(.*/)}) {
         $prefill_text = $1;
@@ -173,7 +164,7 @@ sub prompt_new_branch_name {
     print "\n\e[1mName of new branch?\e[0m \e[2m(leave blank to skip)\e[0m\n";
     print "> $prefill_text";
 
-    my $typed_text = '';   # characters the user has added beyond the prefill
+    my $typed_text = '';
 
     while (1) {
         my $key_char = '';
@@ -184,28 +175,20 @@ sub prompt_new_branch_name {
             last;
 
         } elsif ($key_char eq "\e") {
-            # Swallow escape sequences (arrow keys etc.) — no-op here
             my $seq = '';
-            sysread(STDIN, $seq, 2);
+            sysread(STDIN, $seq, 2);   # swallow arrow keys etc.
 
         } elsif ($key_char eq "\x7f" || $key_char eq "\x08") {
-            # Backspace
             if (length($typed_text) > 0) {
-                # Normal backspace in the user-typed portion
                 chop $typed_text;
                 print "\b \b";
             } elsif (length($prefill_text) > 0) {
-                # Smart backspace: remove one path segment from the prefill
-                # e.g. "feature/motor/" → "feature/"  → ""
                 $prefill_text =~ s{[^/]*/\z}{};
-                # Redraw the input line from scratch
                 clear_line();
                 print "> $prefill_text";
             }
-            # If both are empty, nothing to delete
 
         } elsif ($key_char ge ' ') {
-            # Printable character
             $typed_text .= $key_char;
             print $key_char;
         }
@@ -216,7 +199,7 @@ sub prompt_new_branch_name {
     my $full_input = $prefill_text . $typed_text;
     $full_input =~ s/^\s+|\s+$//g;
 
-    # Move back up and reprint as a single summary line
+    # Collapse to a single summary line
     move_up(2);
     clear_line();
     print "\e[1mName of new branch?\e[0m";
@@ -231,8 +214,8 @@ sub prompt_new_branch_name {
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-my @local_branches = get_local_branches();
-my $current_branch = get_current_branch();
+my @local_branches  = get_local_branches();
+my $current_branch  = get_current_branch();
 
 my $default_source_index = 0;
 for my $i (0 .. $#local_branches) {
@@ -247,6 +230,7 @@ my $source_branch = interactive_menu(
     'Which branch to merge?',
     $default_source_index,
     undef,
+    $current_branch,
     @local_branches
 );
 
@@ -263,6 +247,7 @@ my $target_branch = interactive_menu(
     'Which branch to merge into?',
     $default_target_index,
     $source_branch,
+    $current_branch,
     @local_branches
 );
 
