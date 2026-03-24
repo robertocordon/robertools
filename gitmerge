@@ -1,0 +1,317 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use POSIX qw();
+use IO::Handle;
+
+STDOUT->autoflush(1);
+
+# ── Terminal control ─────────────────────────────────────────────────────────
+my $original_termios;
+
+sub enable_raw_mode {
+    $original_termios = POSIX::Termios->new;
+    $original_termios->getattr(0);
+    my $raw_termios = POSIX::Termios->new;
+    $raw_termios->getattr(0);
+    $raw_termios->setlflag(
+        $raw_termios->getlflag & ~(POSIX::ECHO | POSIX::ICANON)
+    );
+    $raw_termios->setcc(POSIX::VMIN,  1);
+    $raw_termios->setcc(POSIX::VTIME, 0);
+    $raw_termios->setattr(0, POSIX::TCSANOW);
+}
+
+sub restore_terminal {
+    $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
+}
+
+END { restore_terminal(); }
+
+# ── ANSI helpers ─────────────────────────────────────────────────────────────
+sub hide_cursor { print "\e[?25l" }
+sub show_cursor { print "\e[?25h" }
+sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
+sub clear_line  { print "\e[2K\r" }
+
+# ── Git helpers ──────────────────────────────────────────────────────────────
+sub get_local_branches {
+    my $raw_output = `git branch 2>/dev/null`;
+    if ($? != 0 || !defined $raw_output || $raw_output eq '') {
+        die "Error: Could not list git branches. Are you inside a git repository?\n";
+    }
+    my @branch_list;
+    for my $branch_line (split /\n/, $raw_output) {
+        $branch_line =~ s/^\*?\s+//;
+        $branch_line =~ s/\s+$//;
+        push @branch_list, $branch_line if $branch_line ne '';
+    }
+    die "Error: No local branches found.\n" unless @branch_list;
+    return @branch_list;
+}
+
+sub get_current_branch {
+    my $branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
+    chomp $branch;
+    return $branch;
+}
+
+sub run_command {
+    my ($command) = @_;
+    print "  \e[33m\$ $command\e[0m\n";
+    system($command);
+    return $? == 0;
+}
+
+# ── Interactive menu ──────────────────────────────────────────────────────────
+# $prompt         – question shown above the menu
+# $default_index  – initially highlighted item
+# $exclude_value  – branch that is dimmed/unselectable (undef for none)
+# $current_branch – branch to mark with a trailing " *"
+# @options        – list of branch names
+sub interactive_menu {
+    my ($prompt, $default_index, $exclude_value, $current_branch, @options) = @_;
+
+    my $selected_index = $default_index // 0;
+    my $num_options    = scalar @options;
+
+    hide_cursor();
+    enable_raw_mode();
+
+    print "\e[1m$prompt\e[0m\n";
+
+    my $render_menu = sub {
+        for my $i (0 .. $num_options - 1) {
+            clear_line();
+            my $branch_name     = $options[$i];
+            my $is_excluded     = defined $exclude_value && $branch_name eq $exclude_value;
+            my $current_marker  = ($branch_name eq $current_branch) ? ' *' : '';
+
+            if ($i == $selected_index) {
+                if ($is_excluded) {
+                    print "  \e[41m\e[37m> $branch_name$current_marker (already selected above) \e[0m\n";
+                } else {
+                    print "  \e[7m> $branch_name$current_marker \e[0m\n";
+                }
+            } else {
+                if ($is_excluded) {
+                    print "  \e[2m  $branch_name$current_marker\e[0m\n";
+                } else {
+                    print "    $branch_name$current_marker\n";
+                }
+            }
+        }
+    };
+
+    $render_menu->();
+
+    while (1) {
+        my $key_char = '';
+        sysread(STDIN, $key_char, 1);
+
+        if ($key_char eq "\e") {
+            my $seq = '';
+            sysread(STDIN, $seq, 2);
+            if ($seq eq '[A') {
+                $selected_index = ($selected_index - 1 + $num_options) % $num_options;
+            } elsif ($seq eq '[B') {
+                $selected_index = ($selected_index + 1) % $num_options;
+            }
+        } elsif ($key_char eq "\n" || $key_char eq "\r") {
+            my $chosen = $options[$selected_index];
+            if (defined $exclude_value && $chosen eq $exclude_value) {
+                move_up($num_options);
+                $render_menu->();
+                next;
+            }
+            last;
+        }
+
+        move_up($num_options);
+        $render_menu->();
+    }
+
+    restore_terminal();
+    show_cursor();
+
+    my $chosen_branch = $options[$selected_index];
+
+    # Collapse menu + prompt into a single summary line
+    move_up($num_options + 1);
+    for my $i (0 .. $num_options) {
+        clear_line();
+        print "\n";
+    }
+    move_up($num_options + 1);
+    clear_line();
+    print "\e[1m$prompt\e[0m \e[32m$chosen_branch\e[0m\n";
+
+    return $chosen_branch;
+}
+
+# ── Smart branch name prompt ──────────────────────────────────────────────────
+sub prompt_new_branch_name {
+    my ($prefill_branch) = @_;
+
+    my $prefill_text = '';
+    if ($prefill_branch =~ m{^(.*/)}) {
+        $prefill_text = $1;
+    }
+
+    enable_raw_mode();
+    show_cursor();
+
+    print "\n\e[1mName of new branch?\e[0m \e[2m(leave blank to skip)\e[0m\n";
+    print "> $prefill_text";
+
+    my $typed_text = '';
+
+    while (1) {
+        my $key_char = '';
+        sysread(STDIN, $key_char, 1);
+
+        if ($key_char eq "\n" || $key_char eq "\r") {
+            print "\n";
+            last;
+
+        } elsif ($key_char eq "\e") {
+            my $seq = '';
+            sysread(STDIN, $seq, 2);   # swallow arrow keys etc.
+
+        } elsif ($key_char eq "\x7f" || $key_char eq "\x08") {
+            if (length($typed_text) > 0) {
+                chop $typed_text;
+                print "\b \b";
+            } elsif (length($prefill_text) > 0) {
+                $prefill_text =~ s{[^/]*/\z}{};
+                clear_line();
+                print "> $prefill_text";
+            }
+
+        } elsif ($key_char ge ' ') {
+            $typed_text .= $key_char;
+            print $key_char;
+        }
+    }
+
+    restore_terminal();
+
+    my $full_input = $prefill_text . $typed_text;
+    $full_input =~ s/^\s+|\s+$//g;
+
+    # Collapse to a single summary line
+    move_up(2);
+    clear_line();
+    print "\e[1mName of new branch?\e[0m";
+    if ($full_input ne '') {
+        print " \e[32m$full_input\e[0m";
+    } else {
+        print " \e[2m(skipped)\e[0m";
+    }
+    print "\n";
+
+    return $full_input;
+}
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+my $flag_interactive = 0;
+my $flag_message     = 0;
+
+for my $arg (@ARGV) {
+    if    ($arg eq '-i') { $flag_interactive = 1 }
+    elsif ($arg eq '-m') { $flag_message     = 1 }
+    else  { die "Unknown argument: $arg\nUsage: $0 [-i] [-m]\n" }
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+my @local_branches  = get_local_branches();
+my $current_branch  = get_current_branch();
+
+my $default_source_index = 0;
+for my $i (0 .. $#local_branches) {
+    if ($local_branches[$i] eq $current_branch) {
+        $default_source_index = $i;
+        last;
+    }
+}
+
+# Q1 – branch to merge (source)
+my $source_branch = interactive_menu(
+    'Which branch to merge?',
+    $default_source_index,
+    undef,
+    $current_branch,
+    @local_branches
+);
+
+# Q2 – branch to merge into (target)
+my $default_target_index = 0;
+for my $i (0 .. $#local_branches) {
+    if ($local_branches[$i] ne $source_branch) {
+        $default_target_index = $i;
+        last;
+    }
+}
+
+my $target_branch = interactive_menu(
+    'Which branch to merge into?',
+    $default_target_index,
+    $source_branch,
+    $current_branch,
+    @local_branches
+);
+
+# Q3 – optional new branch name with smart prefill
+my $new_branch_name = prompt_new_branch_name($source_branch);
+
+# ── Confirmation (only with -i) ───────────────────────────────────────────────
+my $merge_command = $flag_message
+    ? "git merge --no-ff $source_branch"
+    : "git merge --no-ff --no-edit $source_branch";
+
+if ($flag_interactive) {
+    print "\n\e[1mAbout to run:\e[0m\n";
+    print "  \e[33m\$ git checkout $target_branch\e[0m\n";
+    print "  \e[33m\$ $merge_command\e[0m\n";
+    print "  \e[33m\$ git branch -d $source_branch\e[0m\n";
+    print "  \e[33m\$ git checkout -b $new_branch_name\e[0m\n" if $new_branch_name ne '';
+    print "\nProceed? [y/N] ";
+
+    restore_terminal();
+    show_cursor();
+    my $confirmation = <STDIN>;
+    chomp $confirmation;
+
+    unless (lc($confirmation) eq 'y') {
+        print "Aborted.\n";
+        exit 0;
+    }
+    print "\n";
+} else {
+    restore_terminal();
+    show_cursor();
+}
+
+# ── Execute ───────────────────────────────────────────────────────────────────
+unless (run_command("git checkout $target_branch")) {
+    die "\e[31mError:\e[0m Failed to check out '$target_branch'. Aborting.\n";
+}
+
+unless (run_command($merge_command)) {
+    print "\e[31mMerge failed.\e[0m Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
+    exit 1;
+}
+
+unless (run_command("git branch -d $source_branch")) {
+    print "\e[33mWarning:\e[0m Could not delete '$source_branch'. Skipping deletion.\n";
+}
+
+if ($new_branch_name ne '') {
+    unless (run_command("git checkout -b $new_branch_name")) {
+        die "\e[31mError:\e[0m Failed to create new branch '$new_branch_name'.\n";
+    }
+}
+
+my $final_branch = ($new_branch_name ne '') ? $new_branch_name : $target_branch;
+print "\n\e[32mDone!\e[0m\nNow on branch \e[1m$final_branch\e[0m\n";
+
