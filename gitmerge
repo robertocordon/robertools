@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use POSIX qw();
+use IO::Handle;
 
 # ── Terminal control ─────────────────────────────────────────────────────────
 my $original_termios = POSIX::Termios->new;
@@ -23,6 +24,8 @@ sub restore_terminal {
 }
 
 END { restore_terminal(); }
+
+STDOUT->autoflush(1);
 
 # ── ANSI helpers ─────────────────────────────────────────────────────────────
 sub hide_cursor { print "\e[?25l" }
@@ -84,16 +87,18 @@ sub interactive_menu {
             # Arrow column: ">" for selected, " " for others — branch name
             # always starts at the same column so it never shifts.
             if ($i == $selected_index) {
+                my $current_marker = ($branch_name eq $current_branch) ? ' *' : '';
                 if ($is_excluded) {
-                    print "  \e[41m\e[37m> $branch_name (already selected above) \e[0m\n";
+                    print "  \e[41m\e[37m> $branch_name$current_marker (already selected above) \e[0m\n";
                 } else {
-                    print "  \e[7m> $branch_name \e[0m\n";
+                    print "  \e[7m> $branch_name$current_marker \e[0m\n";
                 }
             } else {
+                my $current_marker = ($branch_name eq $current_branch) ? ' *' : '';
                 if ($is_excluded) {
-                    print "  \e[2m  $branch_name\e[0m\n";
+                    print "  \e[2m  $branch_name$current_marker\e[0m\n";
                 } else {
-                    print "    $branch_name\n";
+                    print "    $branch_name$current_marker\n";
                 }
             }
         }
