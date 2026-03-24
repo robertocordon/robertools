@@ -213,6 +213,16 @@ sub prompt_new_branch_name {
     return $full_input;
 }
 
+# ── Argument parsing ─────────────────────────────────────────────────────────
+my $flag_interactive = 0;
+my $flag_message     = 0;
+
+for my $arg (@ARGV) {
+    if    ($arg eq '-i') { $flag_interactive = 1 }
+    elsif ($arg eq '-m') { $flag_message     = 1 }
+    else  { die "Unknown argument: $arg\nUsage: $0 [-i] [-m]\n" }
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 my @local_branches  = get_local_branches();
 my $current_branch  = get_current_branch();
@@ -254,32 +264,40 @@ my $target_branch = interactive_menu(
 # Q3 – optional new branch name with smart prefill
 my $new_branch_name = prompt_new_branch_name($source_branch);
 
-# ── Confirmation ──────────────────────────────────────────────────────────────
-print "\n\e[1mAbout to run:\e[0m\n";
-print "  \e[33m\$ git checkout $target_branch\e[0m\n";
-print "  \e[33m\$ git merge --no-ff $source_branch\e[0m\n";
-print "  \e[33m\$ git branch -d $source_branch\e[0m\n";
-print "  \e[33m\$ git checkout -b $new_branch_name\e[0m\n" if $new_branch_name ne '';
-print "\nProceed? [y/N] ";
+# ── Confirmation (only with -i) ───────────────────────────────────────────────
+my $merge_command = $flag_message
+    ? "git merge --no-ff $source_branch"
+    : "git merge --no-ff --no-edit $source_branch";
 
-restore_terminal();
-show_cursor();
-my $confirmation = <STDIN>;
-chomp $confirmation;
+if ($flag_interactive) {
+    print "\n\e[1mAbout to run:\e[0m\n";
+    print "  \e[33m\$ git checkout $target_branch\e[0m\n";
+    print "  \e[33m\$ $merge_command\e[0m\n";
+    print "  \e[33m\$ git branch -d $source_branch\e[0m\n";
+    print "  \e[33m\$ git checkout -b $new_branch_name\e[0m\n" if $new_branch_name ne '';
+    print "\nProceed? [y/N] ";
 
-unless (lc($confirmation) eq 'y') {
-    print "Aborted.\n";
-    exit 0;
+    restore_terminal();
+    show_cursor();
+    my $confirmation = <STDIN>;
+    chomp $confirmation;
+
+    unless (lc($confirmation) eq 'y') {
+        print "Aborted.\n";
+        exit 0;
+    }
+    print "\n";
+} else {
+    restore_terminal();
+    show_cursor();
 }
 
 # ── Execute ───────────────────────────────────────────────────────────────────
-print "\n";
-
 unless (run_command("git checkout $target_branch")) {
     die "\e[31mError:\e[0m Failed to check out '$target_branch'. Aborting.\n";
 }
 
-unless (run_command("git merge --no-ff $source_branch")) {
+unless (run_command($merge_command)) {
     print "\e[31mMerge failed.\e[0m Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
     exit 1;
 }
@@ -294,5 +312,6 @@ if ($new_branch_name ne '') {
     }
 }
 
-print "\n\e[32mDone!\e[0m\n";
+my $final_branch = ($new_branch_name ne '') ? $new_branch_name : $target_branch;
+print "\n\e[32mDone!\e[0m\nNow on branch \e[1m$final_branch\e[0m\n";
 
