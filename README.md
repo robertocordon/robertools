@@ -1,8 +1,16 @@
-# git-merge-helper
+# git-tools
 
-A small interactive command-line tool for merging git branches without having to type branch names or remember the right flags.
+A collection of small command-line tools to make common git workflows faster and less error-prone.
 
-## What it does
+---
+
+## Current Tools
+
+### git-merge-helper
+
+An interactive tool for merging git branches without having to type branch names or remember the right flags.
+
+#### What it does
 
 Asks you three questions, then runs the merge for you:
 
@@ -12,7 +20,7 @@ Asks you three questions, then runs the merge for you:
 
 After a successful merge, the source branch is deleted locally (safe delete only — never forced).
 
-## Setup
+#### Setup
 
 ```bash
 chmod +x gitmerge
@@ -20,7 +28,7 @@ chmod +x gitmerge
 
 Place it somewhere on your `$PATH`, or run it directly from your repo with `./gitmerge`.
 
-## Usage
+#### Usage
 
 ```bash
 ./gitmerge [-i] [-m]
@@ -28,7 +36,7 @@ Place it somewhere on your `$PATH`, or run it directly from your repo with `./gi
 
 With no flags, the tool asks its three questions and runs the merge immediately — no extra prompts.
 
-### Flags
+##### Flags
 
 | Flag | Description |
 |------|-------------|
@@ -37,21 +45,44 @@ With no flags, the tool asks its three questions and runs the merge immediately 
 
 Flags can be combined: `./gitmerge -i -m`
 
-## Example
+#### Example
 
 ```
-Which branch to merge?    feature/motor/pwm
+Which branch to merge?      feature/motor/pwm
 Which branch to merge into? develop
-Name of new branch?       feature/motor/pins
+Name of new branch?         feature/motor/pins
 
 Done!
 Now on branch feature/motor/pins
 ```
 
-## Notes
+#### Notes
 
 - The current branch is marked with a `*` in the branch picker
 - The new branch prompt pre-fills with the folder prefix of the source branch (e.g. merging `feature/motor/pwm` pre-fills `feature/motor/`). Backspace on the pre-filled portion removes one path segment at a time.
 - Merges always use `--no-ff`
 - Branch deletion uses `git branch -d` (safe, never force)
 
+---
+
+## Future Tools
+
+### gitrelease
+
+Automates the release process. Creates a release branch off `develop`, appends an entry to the release notes file, then merges into both `develop` and `master`. Tags the resulting commit on `master` with the release version.
+
+### gitundo
+
+Undoes the last commit, leaving your changes intact in the working directory — a safe way to step back without losing work.
+
+### gitrecommit
+
+A shortcut for amending the most recent commit — useful for folding in a small fix or rewording a commit message without creating a new commit.
+
+### gitclean
+
+Discards all unstaged changes. Prompts separately about whether to also discard staged changes, so you never accidentally lose work you meant to keep.
+
+### gitrename
+
+Renames a branch. Defaults to the current branch, or accepts a branch name as an argument to rename any local branch.
