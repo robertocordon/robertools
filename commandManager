@@ -54,6 +54,8 @@ my @COMMANDS = (
 # ── Install commands ──────────────────────────────────────────────────────────
 # These run first when --install / -i is passed, before aliases are set.
 
+my $VERBOSE = grep { $_ eq '-v' } @ARGV;
+
 my @INSTALL_COMMANDS = (
     'echo "Running install steps..."',
     'echo "Install complete."',
@@ -113,7 +115,7 @@ sub display_name {
 
 sub run_shell_command {
     my ($shell_cmd) = @_;
-    print "  \e[33m\$ $shell_cmd\e[0m\n";
+    print "  \e[33m\$ $shell_cmd\e[0m\n" if $VERBOSE;
     system($shell_cmd);
     return $? == 0;
 }
