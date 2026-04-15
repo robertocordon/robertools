@@ -160,6 +160,85 @@ Done! Aliases are active in this shell session.
 
 ---
 
+## prettyPS1
+
+An interactive tool for customizing your shell prompt (`PS1`). Answer a few questions using arrow-key menus, then drop the output into your `.bashrc` — or pipe it straight into `eval` for instant results.
+
+### What it does
+
+Walks you through two choices:
+
+1. **First variable** — date and time, time only, username, or nothing
+2. **Second variable** — full path, current directory, or nothing
+
+Each non-empty variable gets its own color. At least one variable must be selected. The final output is a ready-to-use `export PS1="..."` line.
+
+### Usage
+
+```bash
+./prettyPS1
+./prettyPS1 [variable flags] [color flags]
+```
+
+With no arguments, an interactive arrow-key menu guides you through the configuration.
+
+#### Variable flags
+
+**First variable** — at most one of:
+
+| Flag | Description |
+|------|-------------|
+| `-d` | Date and time (`YYYY.MM.DD HH:MM`) |
+| `-t` | Time only (`HH:MM`) |
+| `-u` | Username |
+
+**Second variable** — at most one of:
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Full path |
+| `-c` | Current directory name |
+
+#### Color flags
+
+Lowercase sets the color for the **first** variable; uppercase sets the color for the **second**. If omitted, white is used.
+
+| Flag | Color |
+|------|-------|
+| `b` / `B` | Black |
+| `r` / `R` | Red |
+| `g` / `G` | Green |
+| `y` / `Y` | Yellow |
+| `l` / `L` | Blue |
+| `p` / `P` | Purple |
+| `n` / `N` | Cyan |
+| `w` / `W` | White |
+
+Flags can be combined in any order in a single argument.
+
+#### Example
+
+```bash
+./prettyPS1 -drfG
+```
+
+Date and time in Red, full path in Green.
+
+```bash
+eval "$(./prettyPS1 -drfG)"
+```
+
+Apply to the current session immediately.
+
+#### Notes
+
+- `-d`, `-t`, and `-u` are mutually exclusive (all set the first variable)
+- `-f` and `-c` are mutually exclusive (both set the second variable)
+- Both variables cannot be empty — at least one of `-d`, `-t`, `-u`, `-f`, `-c` must be provided
+- In CLI mode, output is a single `export PS1="..."` line and nothing else, suitable for use with `eval`
+
+---
+
 # Upcoming Tools
 
 ## gitrelease
@@ -181,8 +260,4 @@ Discards all unstaged changes. Prompts separately about whether to also discard 
 ## gitrename
 
 Renames a branch. Defaults to the current branch, or accepts a branch name as an argument to rename any local branch.
-
-## prettyPS1
-
-An interactive tool for configuring your shell prompt (`PS1`). Pick and arrange the elements you want — current directory, git branch, user, hostname, and more — and see a live preview as you build it. Outputs the final `PS1` export line, ready to drop into your `.bashrc` or `.zshrc`.
 
