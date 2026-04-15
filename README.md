@@ -182,3 +182,7 @@ Discards all unstaged changes. Prompts separately about whether to also discard 
 
 Renames a branch. Defaults to the current branch, or accepts a branch name as an argument to rename any local branch.
 
+## prettyPS1
+
+An interactive tool for configuring your shell prompt (`PS1`). Pick and arrange the elements you want — current directory, git branch, user, hostname, and more — and see a live preview as you build it. Outputs the final `PS1` export line, ready to drop into your `.bashrc` or `.zshrc`.
+
