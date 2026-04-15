@@ -117,11 +117,11 @@ my %LETTER_TO_COLOR = (
 sub build_ps1 {
     my ($var1_code, $var1_color, $var2_code, $var2_color) = @_;
     if ($var1_code ne '' && $var2_code ne '') {
-        return "${var1_color}${var1_code} ${COLOR_RESET}${var2_color}${var2_code}:${COLOR_RESET}";
+        return "${var1_color}${var1_code} ${COLOR_RESET}${var2_color}${var2_code}: ${COLOR_RESET}";
     } elsif ($var1_code ne '') {
-        return "${var1_color}${var1_code}:${COLOR_RESET}";
+        return "${var1_color}${var1_code}: ${COLOR_RESET}";
     } else {
-        return "${var2_color}${var2_code}:${COLOR_RESET}";
+        return "${var2_color}${var2_code}: ${COLOR_RESET}";
     }
 }
 
