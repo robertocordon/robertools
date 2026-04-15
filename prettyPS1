@@ -95,22 +95,108 @@ sub interactive_select {
 
 # ── Color data ────────────────────────────────────────────────────────────────
 
-my @COLOR_NAMES = qw(Black Red Green Yellow Blue Purple Cyan White);
-my @COLOR_CODES = (
-    '\e[0;30m',
-    '\e[0;31m',
-    '\e[0;32m',
-    '\e[0;33m',
-    '\e[0;34m',
-    '\e[0;35m',
-    '\e[0;36m',
-    '\e[0;37m',
+my @COLOR_NAMES   = qw(Black Red Green Yellow Blue Purple Cyan White);
+my @COLOR_LETTERS = qw(b     r   g     y      l    p      n    w    );
+my $COLOR_RESET   = '\e[0m';
+
+my %LETTER_TO_COLOR = (
+    b => '\e[0;30m',  # Black
+    r => '\e[0;31m',  # Red
+    g => '\e[0;32m',  # Green
+    y => '\e[0;33m',  # Yellow
+    l => '\e[0;34m',  # Blue
+    p => '\e[0;35m',  # Purple
+    n => '\e[0;36m',  # Cyan
+    w => '\e[0;37m',  # White
 );
-my $COLOR_RESET = '\e[0m';
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+# ── CLI mode ──────────────────────────────────────────────────────────────────
+
+sub build_ps1 {
+    my ($var1_code, $var1_color, $var2_code, $var2_color) = @_;
+    if ($var1_code ne '' && $var2_code ne '') {
+        return "${var1_color}${var1_code} ${COLOR_RESET}${var2_color}${var2_code}:${COLOR_RESET}";
+    } elsif ($var1_code ne '') {
+        return "${var1_color}${var1_code}:${COLOR_RESET}";
+    } else {
+        return "${var2_color}${var2_code}:${COLOR_RESET}";
+    }
+}
+
+sub run_cli {
+    my $args = join('', @ARGV);
+
+    # Strip leading dashes — support both -drfG and -d -r -f -G
+    $args =~ s/-//g;
+
+    # ── Validate conflicts ────────────────────────────────────────────────────
+
+    my $has_d = $args =~ /d/;
+    my $has_t = $args =~ /t/;
+    my $has_u = $args =~ /u/;
+    my $has_f = $args =~ /f/;
+    my $has_c = $args =~ /c/;
+
+    if ($has_d && $has_t) {
+        print STDERR "Error: -d (date and time) and -t (time only) are mutually exclusive.\n";
+        exit 1;
+    }
+    if ($has_d && $has_u) {
+        print STDERR "Error: -d and -u are mutually exclusive (both set the first variable).\n";
+        exit 1;
+    }
+    if ($has_t && $has_u) {
+        print STDERR "Error: -t and -u are mutually exclusive (both set the first variable).\n";
+        exit 1;
+    }
+    if ($has_f && $has_c) {
+        print STDERR "Error: -f (full path) and -c (current directory) are mutually exclusive.\n";
+        exit 1;
+    }
+
+    # ── Resolve variable codes ────────────────────────────────────────────────
+
+    my $var1_code = $has_d ? '\D{%Y.%m.%d %H:%M}'
+                  : $has_t ? '\D{%H:%M}'
+                  : $has_u ? '\u'
+                  :          '';
+
+    my $var2_code = $has_f ? '\w'
+                  : $has_c ? '\W'
+                  :          '';
+
+    if ($var1_code eq '' && $var2_code eq '') {
+        print STDERR "Error: Both variables are blank. Specify at least one of -d, -t, -u, -f, -c.\n";
+        exit 1;
+    }
+
+    # ── Resolve colors ────────────────────────────────────────────────────────
+    # lowercase letters → first color, uppercase → second color
+    # default to white if not specified
+
+    my ($c1_letter) = ($args =~ /([brgylpnw])/);
+    my ($c2_letter) = ($args =~ /([BRGYLPNW])/);
+
+    my $var1_color = defined $c1_letter ? $LETTER_TO_COLOR{$c1_letter} : $LETTER_TO_COLOR{w};
+    my $var2_color = defined $c2_letter ? $LETTER_TO_COLOR{lc($c2_letter)} : $LETTER_TO_COLOR{w};
+
+    # ── Output ────────────────────────────────────────────────────────────────
+
+    my $ps1 = build_ps1($var1_code, $var1_color, $var2_code, $var2_color);
+    print "export PS1=\"$ps1\"\n";
+}
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 sub main {
+    # If any arguments are passed, run in CLI mode
+    if (@ARGV) {
+        run_cli();
+        return;
+    }
+
     print "\n\e[1mPS1 Customizer\e[0m\n\n";
 
     # ── Question 1: first variable ────────────────────────────────────────────
@@ -129,7 +215,7 @@ sub main {
 
         # ── Question 2: color for first variable ──────────────────────────────
         my $c1_idx       = interactive_select('Select a color for the first variable:', @COLOR_NAMES);
-        $var1_color_code = $COLOR_CODES[$c1_idx];
+        $var1_color_code = $LETTER_TO_COLOR{ $COLOR_LETTERS[$c1_idx] };
         print "\n";
     }
 
@@ -148,7 +234,7 @@ sub main {
 
         # ── Question 4: color for second variable ─────────────────────────────
         my $c2_idx       = interactive_select('Select a color for the second variable:', @COLOR_NAMES);
-        $var2_color_code = $COLOR_CODES[$c2_idx];
+        $var2_color_code = $LETTER_TO_COLOR{ $COLOR_LETTERS[$c2_idx] };
         print "\n";
     }
 
@@ -166,23 +252,18 @@ sub main {
     # When only one variable is set, no space separator is inserted and only
     # that variable's color wrapping is emitted.
 
-    my $ps1 = '';
-
-    if ($var1_code ne '' && $var2_code ne '') {
-        $ps1 = "${var1_color_code}${var1_code} ${COLOR_RESET}${var2_color_code}${var2_code}:${COLOR_RESET}";
-    } elsif ($var1_code ne '') {
-        $ps1 = "${var1_color_code}${var1_code}:${COLOR_RESET}";
-    } else {
-        $ps1 = "${var2_color_code}${var2_code}:${COLOR_RESET}";
-    }
+    my $ps1 = build_ps1($var1_code, $var1_color_code, $var2_code, $var2_color_code);
 
     # ── Output ────────────────────────────────────────────────────────────────
 
     print "\e[1mGenerated PS1:\e[0m\n";
     print "  \e[33m$ps1\e[0m\n\n";
-    print "Add the following line to your \e[1m~/.bashrc\e[0m or \e[1m~/.bash_profile\e[0m:\n\n";
+    print "To make this permanent, add the following to your \e[1m~/.bashrc\e[0m or \e[1m~/.bash_profile\e[0m:\n\n";
     print "  \e[36mexport PS1=\"$ps1\"\e[0m\n\n";
-    print "Then reload your shell config with: \e[1msource ~/.bashrc\e[0m\n\n";
+    print "Then reload with: \e[1msource ~/.bashrc\e[0m\n\n";
+
+    print "To make this permanent, add the following to your \e[1m~/.bashrc\e[0m or \e[1m~/.bash_profile\e[0m,\n";
+    print "or run \e[1meval \"\$(./prettyPS1 ...)\"\e[0m to apply it to the current session.\n\n";
 }
 
 main();
