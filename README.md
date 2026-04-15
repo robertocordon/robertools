@@ -160,6 +160,78 @@ Done! Aliases are active in this shell session.
 
 ---
 
+## prettyPS1
+
+An interactive tool for customizing your shell prompt (`PS1`). Answer a few questions using arrow-key menus, then drop the output into your `.bashrc` — or pipe it straight into `eval` for instant results.
+
+### What it does
+
+Walks you through two choices:
+
+1. **First variable** — date and time, time only, username, or nothing
+2. **Second variable** — full path, current directory, or nothing
+
+Each non-empty variable gets its own color. At least one variable must be selected. The final output is a ready-to-use `export PS1="..."` line.
+
+### Usage
+
+```bash
+./prettyPS1
+./prettyPS1 [variable flags] [color flags]
+```
+
+With no arguments, an interactive arrow-key menu guides you through the configuration.
+
+#### Variable flags
+
+| Flag | Description |
+|------|-------------|
+| `-d` | Date and time (`YYYY.MM.DD HH:MM`) — first variable |
+| `-t` | Time only (`HH:MM`) — first variable |
+| `-u` | Username — first variable |
+| `-f` | Full path — second variable |
+| `-c` | Current directory name — second variable |
+
+#### Color flags
+
+Lowercase sets the color for the **first** variable; uppercase sets the color for the **second**. If omitted, white is used.
+
+| Flag | Color |
+|------|-------|
+| `b` / `B` | Black |
+| `r` / `R` | Red |
+| `g` / `G` | Green |
+| `y` / `Y` | Yellow |
+| `l` / `L` | Blue |
+| `p` / `P` | Purple |
+| `n` / `N` | Cyan |
+| `w` / `W` | White |
+
+Flags can be combined in any order in a single argument.
+
+#### Example
+
+```bash
+./prettyPS1 -drfG
+```
+
+Date and time in Red, full path in Green.
+
+```bash
+eval "$(./prettyPS1 -drfG)"
+```
+
+Apply to the current session immediately.
+
+#### Notes
+
+- `-d`, `-t`, and `-u` are mutually exclusive (all set the first variable)
+- `-f` and `-c` are mutually exclusive (both set the second variable)
+- Both variables cannot be empty — at least one of `-d`, `-t`, `-u`, `-f`, `-c` must be provided
+- In CLI mode, output is a single `export PS1="..."` line and nothing else, suitable for use with `eval`
+
+---
+
 # Upcoming Tools
 
 ## gitrelease
