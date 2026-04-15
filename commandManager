@@ -64,14 +64,19 @@ my @INSTALL_COMMANDS = (
 my $original_termios;
 
 sub enable_raw_mode {
-    $original_termios = POSIX::Termios->new;
-    $original_termios->getattr(0);
-    my $raw = POSIX::Termios->new;
-    $raw->getattr(0);
-    $raw->setlflag( $raw->getlflag & ~(POSIX::ECHO | POSIX::ICANON) );
-    $raw->setcc(POSIX::VMIN,  1);
-    $raw->setcc(POSIX::VTIME, 0);
-    $raw->setattr(0, POSIX::TCSANOW);
+    $original_termios = POSIX::Termios->new;     # allocate empty termios struct (save slot)
+    $original_termios->getattr(0);               # populate it with current terminal settings from stdin — saved for restore
+
+    my $raw = POSIX::Termios->new;               # allocate another empty struct (this one we'll modify)
+    $raw->getattr(0);                            # populate it with current settings too, so we start from a valid state
+
+    $raw->setlflag(                              # update the "local flags" bitmask:
+        $raw->getlflag & ~(POSIX::ECHO |        #   ECHO off — don't print keypresses to screen
+                           POSIX::ICANON)       #   ICANON off — deliver each keypress immediately, don't wait for Enter
+    );
+    $raw->setcc(POSIX::VMIN,  1);               # block sysread until at least 1 character is available
+    $raw->setcc(POSIX::VTIME, 0);               # no timeout — wait as long as needed
+    $raw->setattr(0, POSIX::TCSANOW);           # apply modified settings to stdin immediately
 }
 
 sub restore_terminal {
