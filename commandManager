@@ -131,19 +131,19 @@ sub run_command_entry {
 # ── Install mode ──────────────────────────────────────────────────────────────
 
 sub run_install {
-    print "\e[1mRunning install steps...\e[0m\n";
+    print "\e[1mRunning install steps...\e[0m\n" if $VERBOSE;
     for my $c (@INSTALL_COMMANDS) {
         run_shell_command($c);
     }
 
-    print "\n\e[1mSetting aliases for this session...\e[0m\n";
+    print "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
     for my $cmd (@COMMANDS) {
         my $joined = join(' && ', @{ $cmd->{commands} });
         my $alias_cmd = "alias $cmd->{name}='$joined'";
-        print "  \e[33m\$ $alias_cmd\e[0m\n";
+        print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
         system($alias_cmd);
     }
-    print "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n";
+    print "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n" if $VERBOSE;
 }
 
 # ── Help mode ─────────────────────────────────────────────────────────────────
