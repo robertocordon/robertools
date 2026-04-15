@@ -144,7 +144,7 @@ sub resolve_alias {
     return $a eq '1' ? $cmd->{name} : $a;  # 1 → use name, string → use string
 }
 
-
+sub find_command {
     my ($name) = @_;
     for my $cmd (@COMMANDS) {
         return $cmd if $cmd->{name} eq $name;
