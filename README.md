@@ -1,14 +1,18 @@
-# git-tools
+# robertools
 
-A collection of small command-line tools to make common git workflows faster and less error-prone.
+A collection of small command-line tools to streamline everyday development workflows.
 
 ---
 
-# gitmerge
+## git-tools
+
+A set of tools to make common git workflows faster and less error-prone.
+
+### gitmerge
 
 An interactive tool for merging git branches without having to type branch names or remember the right flags.
 
-## What it does
+#### What it does
 
 Asks you three questions, then runs the merge for you:
 
@@ -18,7 +22,7 @@ Asks you three questions, then runs the merge for you:
 
 After a successful merge, the source branch is deleted locally (safe delete only — never forced).
 
-## Setup
+#### Setup
 
 ```bash
 chmod +x gitmerge
@@ -26,7 +30,7 @@ chmod +x gitmerge
 
 Place it somewhere on your `$PATH`, or run it directly from your repo with `./gitmerge`.
 
-## Usage
+#### Usage
 
 ```bash
 ./gitmerge [-i] [-m]
@@ -34,7 +38,7 @@ Place it somewhere on your `$PATH`, or run it directly from your repo with `./gi
 
 With no flags, the tool asks its three questions and runs the merge immediately — no extra prompts.
 
-### Flags
+##### Flags
 
 | Flag | Description |
 |------|-------------|
@@ -43,7 +47,7 @@ With no flags, the tool asks its three questions and runs the merge immediately 
 
 Flags can be combined: `./gitmerge -i -m`
 
-## Example
+#### Example
 
 ```
 Which branch to merge?      feature/motor/pwm
@@ -54,7 +58,7 @@ Done!
 Now on branch feature/motor/pins
 ```
 
-## Notes
+#### Notes
 
 - The current branch is marked with a `*` in the branch picker
 - The new branch prompt pre-fills with the folder prefix of the source branch (e.g. merging `feature/motor/pwm` pre-fills `feature/motor/`). Backspace on the pre-filled portion removes one path segment at a time.
