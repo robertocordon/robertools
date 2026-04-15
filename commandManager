@@ -23,6 +23,7 @@ my @COMMANDS = (
             'echo "Hello from workflow!"',
             'date',
         ],
+        alias    => 1,          # use 'greet' as the alias
     },
     {
         name     => 'listFiles',
@@ -31,6 +32,7 @@ my @COMMANDS = (
         commands => [
             'ls -lah',
         ],
+        alias    => 'lf',       # use 'lf' as the alias
     },
     {
         name     => 'diskUsage',
@@ -39,6 +41,7 @@ my @COMMANDS = (
         commands => [
             'du -sh ./*',
         ],
+        alias    => 0,          # no alias
     },
     {
         name     => 'sysInfo',
@@ -48,6 +51,7 @@ my @COMMANDS = (
             'uname -a',
             'uptime',
         ],
+                                # no alias key — same as 0
     },
 );
 
@@ -96,7 +100,14 @@ sub clear_line  { print "\e[2K\r" }
 
 # ── Command lookup ────────────────────────────────────────────────────────────
 
-sub find_command {
+sub resolve_alias {
+    my ($cmd) = @_;
+    my $a = $cmd->{alias};
+    return undef unless defined $a && $a;   # 0 or absent → no alias
+    return $a eq '1' ? $cmd->{name} : $a;  # 1 → use name, string → use string
+}
+
+
     my ($name) = @_;
     for my $cmd (@COMMANDS) {
         return $cmd if $cmd->{name} eq $name;
@@ -138,8 +149,10 @@ sub run_install {
 
     print "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
     for my $cmd (@COMMANDS) {
-        my $joined = join(' && ', @{ $cmd->{commands} });
-        my $alias_cmd = "alias $cmd->{name}='$joined'";
+        my $alias = resolve_alias($cmd);
+        next unless defined $alias;
+        my $joined    = join(' && ', @{ $cmd->{commands} });
+        my $alias_cmd = "alias $alias='$joined'";
         print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
         system($alias_cmd);
     }
