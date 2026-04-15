@@ -1,0 +1,189 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use POSIX qw();
+use IO::Handle;
+
+STDOUT->autoflush(1);
+
+# ── Terminal control ──────────────────────────────────────────────────────────
+
+my $original_termios;
+
+sub enable_raw_mode {
+    $original_termios = POSIX::Termios->new;
+    $original_termios->getattr(0);
+
+    my $raw = POSIX::Termios->new;
+    $raw->getattr(0);
+    $raw->setlflag(
+        $raw->getlflag & ~(POSIX::ECHO | POSIX::ICANON)
+    );
+    $raw->setcc(POSIX::VMIN,  1);
+    $raw->setcc(POSIX::VTIME, 0);
+    $raw->setattr(0, POSIX::TCSANOW);
+}
+
+sub restore_terminal {
+    $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
+}
+
+END { restore_terminal() }
+
+# ── ANSI helpers ──────────────────────────────────────────────────────────────
+
+sub hide_cursor { print "\e[?25l" }
+sub show_cursor { print "\e[?25h" }
+sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
+sub clear_line  { print "\e[2K\r" }
+
+# ── Interactive selector ──────────────────────────────────────────────────────
+
+sub interactive_select {
+    my ($prompt, @options) = @_;
+    my $n        = scalar @options;
+    my $selected = 0;
+
+    hide_cursor();
+    enable_raw_mode();
+
+    print "\e[1m$prompt\e[0m\n";
+
+    my $render = sub {
+        for my $i (0 .. $n - 1) {
+            clear_line();
+            if ($i == $selected) {
+                print "\e[7m  > $options[$i] \e[0m\n";
+            } else {
+                print "    $options[$i]\n";
+            }
+        }
+    };
+
+    $render->();
+
+    while (1) {
+        my $ch = '';
+        sysread(STDIN, $ch, 1);
+
+        if ($ch eq "\e") {
+            my $seq = '';
+            sysread(STDIN, $seq, 2);
+            if    ($seq eq '[A') { $selected = ($selected - 1 + $n) % $n }
+            elsif ($seq eq '[B') { $selected = ($selected + 1)      % $n }
+        } elsif ($ch eq "\n" || $ch eq "\r") {
+            last;
+        }
+
+        move_up($n);
+        $render->();
+    }
+
+    restore_terminal();
+    show_cursor();
+
+    # Collapse menu to a single summary line
+    move_up($n + 1);
+    for my $i (0 .. $n) { clear_line(); print "\n" }
+    move_up($n + 1);
+    clear_line();
+    print "\e[1m$prompt\e[0m \e[32m$options[$selected]\e[0m\n";
+
+    return $selected;
+}
+
+# ── Color data ────────────────────────────────────────────────────────────────
+
+my @COLOR_NAMES = qw(Black Red Green Yellow Blue Purple Cyan White);
+my @COLOR_CODES = (
+    '\e[0;30m',
+    '\e[0;31m',
+    '\e[0;32m',
+    '\e[0;33m',
+    '\e[0;34m',
+    '\e[0;35m',
+    '\e[0;36m',
+    '\e[0;37m',
+);
+my $COLOR_RESET = '\e[0m';
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+sub main {
+    print "\n\e[1mPS1 Customizer\e[0m\n\n";
+
+    # ── Question 1: first variable ────────────────────────────────────────────
+
+    my @var1_options  = ('Date and time', 'Time only', 'Username', 'Nothing');
+    my $var1_idx      = interactive_select('Select the first variable:', @var1_options);
+    my $var1_choice   = $var1_options[$var1_idx];
+    print "\n";
+
+    my ($var1_code, $var1_color_code) = ('', '');
+
+    if ($var1_choice ne 'Nothing') {
+        if    ($var1_choice eq 'Date and time') { $var1_code = '\D{%Y.%m.%d %H:%M}' }
+        elsif ($var1_choice eq 'Time only')     { $var1_code = '\D{%H:%M}'           }
+        elsif ($var1_choice eq 'Username')      { $var1_code = '\u'                   }
+
+        # ── Question 2: color for first variable ──────────────────────────────
+        my $c1_idx       = interactive_select('Select a color for the first variable:', @COLOR_NAMES);
+        $var1_color_code = $COLOR_CODES[$c1_idx];
+        print "\n";
+    }
+
+    # ── Question 3: second variable ───────────────────────────────────────────
+
+    my @var2_options = ('Full path', 'Current directory', 'Nothing');
+    my $var2_idx     = interactive_select('Select the second variable:', @var2_options);
+    my $var2_choice  = $var2_options[$var2_idx];
+    print "\n";
+
+    my ($var2_code, $var2_color_code) = ('', '');
+
+    if ($var2_choice ne 'Nothing') {
+        if    ($var2_choice eq 'Full path')          { $var2_code = '\w' }
+        elsif ($var2_choice eq 'Current directory')  { $var2_code = '\W' }
+
+        # ── Question 4: color for second variable ─────────────────────────────
+        my $c2_idx       = interactive_select('Select a color for the second variable:', @COLOR_NAMES);
+        $var2_color_code = $COLOR_CODES[$c2_idx];
+        print "\n";
+    }
+
+    # ── Validation ────────────────────────────────────────────────────────────
+
+    if ($var1_code eq '' && $var2_code eq '') {
+        print "\e[31mError:\e[0m Both variables cannot be blank. Please re-run and select at least one.\n";
+        exit 1;
+    }
+
+    # ── Build PS1 ─────────────────────────────────────────────────────────────
+    #
+    # Format: [start color1][var1][ ][end color1, start color2][var2][:][end color2]
+    #
+    # When only one variable is set, no space separator is inserted and only
+    # that variable's color wrapping is emitted.
+
+    my $ps1 = '';
+
+    if ($var1_code ne '' && $var2_code ne '') {
+        $ps1 = "${var1_color_code}${var1_code} ${COLOR_RESET}${var2_color_code}${var2_code}:${COLOR_RESET}";
+    } elsif ($var1_code ne '') {
+        $ps1 = "${var1_color_code}${var1_code}:${COLOR_RESET}";
+    } else {
+        $ps1 = "${var2_color_code}${var2_code}:${COLOR_RESET}";
+    }
+
+    # ── Output ────────────────────────────────────────────────────────────────
+
+    print "\e[1mGenerated PS1:\e[0m\n";
+    print "  \e[33m$ps1\e[0m\n\n";
+    print "Add the following line to your \e[1m~/.bashrc\e[0m or \e[1m~/.bash_profile\e[0m:\n\n";
+    print "  \e[36mexport PS1=\"$ps1\"\e[0m\n\n";
+    print "Then reload your shell config with: \e[1msource ~/.bashrc\e[0m\n\n";
+}
+
+main();
+
