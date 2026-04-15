@@ -54,9 +54,9 @@ sub interactive_select {
         for my $i (0 .. $n - 1) {
             clear_line();
             if ($i == $selected) {
-                print "  \e[7m> $options[$i] \e[0m\n";
+                print "\e[7m  > $options[$i] \e[0m\n";
             } else {
-                print "  $options[$i]\n";
+                print "    $options[$i]\n";
             }
         }
     };
