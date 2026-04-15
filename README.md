@@ -67,6 +67,117 @@ Now on branch feature/motor/pins
 
 ---
 
+## commandManager
+
+An interactive command runner and alias manager. Define your frequently-used shell workflows in a config file and run them by name, browse them with arrow keys, or install them as session aliases.
+
+### What it does
+
+Reads a list of named commands from `~/.commandManager` (JSON) and lets you:
+
+1. **Browse and run** — launch with no arguments to pick a command using the arrow keys
+2. **Run directly** — pass a command name as a flag to run it immediately
+3. **Install aliases** — set shell aliases for the current session so your commands are available by short name
+4. **Get help** — list all commands with descriptions, or look up a specific one
+
+### Setup
+
+```bash
+chmod +x workflow
+```
+
+Place it somewhere on your `$PATH`, or run it directly with `./workflow`.
+
+On first run, if `~/.commandManager` doesn't exist, the script creates a template file and exits — edit it to define your own commands, then run again.
+
+### Config file
+
+`~/.commandManager` is a JSON file with two keys:
+
+```json
+{
+  "install_commands": [
+    "echo \"Any setup steps to run during install go here\""
+  ],
+  "commands": [
+    {
+      "name": "greet",
+      "longName": "Say Hello",
+      "helpText": "Prints a greeting and the current date.",
+      "commands": ["echo \"Hello!\"", "date"],
+      "alias": 1
+    }
+  ]
+}
+```
+
+#### Command fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | ✅ | Short identifier, used as the CLI argument and alias name |
+| `helpText` | ✅ | Description shown in `--help` output |
+| `commands` | ✅ | Array of bash commands — run in sequence |
+| `longName` | ➖ | Human-friendly label shown in menus and help output |
+| `alias` | ➖ | `1` to alias as `name`, a string to use a custom alias, or `0`/absent for no alias |
+
+### Usage
+
+```bash
+./workflow [--install | -i] [--help [name]] [--<name>] [-v]
+```
+
+With no arguments, an interactive arrow-key menu is shown.
+
+#### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--install`, `-i` | Runs `install_commands` in sequence, then sets session aliases for all commands that have an `alias` defined |
+| `--help` | Lists all commands with their descriptions |
+| `--help <name>` | Shows the description for a single command |
+| `--<name>` | Runs the command with that name directly |
+| `-v` | **Verbose mode.** Prints each shell command before running it |
+
+### Example
+
+```
+$ ./workflow
+Select a command: Say Hello (greet)
+
+Running: Say Hello (greet)
+Hello!
+Tue Apr 14 10:32:01 EDT 2026
+```
+
+```
+$ ./workflow --help
+Available commands:
+
+  Say Hello (greet)            Prints a greeting and the current date.
+  List Files (detailed) (listFiles)   Lists all files in the current directory with details.
+```
+
+```
+$ ./workflow --install -v
+Running install steps...
+  $ echo "Running install steps..."
+  ...
+Setting aliases for this session...
+  $ alias greet='echo "Hello!" && date'
+  $ alias lf='ls -lah'
+
+Done! Aliases are active in this shell session.
+```
+
+#### Notes
+
+- Aliases are set in the current shell session only — they do not persist across sessions
+- Commands with multiple entries in the `commands` array are joined with `&&` when aliased
+- If `~/.commandManager` contains invalid JSON or is missing required fields, a clear error message is shown
+
+---
+
 # Upcoming Tools
 
 ## gitrelease
