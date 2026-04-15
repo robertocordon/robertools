@@ -151,7 +151,7 @@ sub run_install {
 sub print_help_all {
     print "\e[1mAvailable commands:\e[0m\n\n";
     for my $cmd (@COMMANDS) {
-        printf "  \e[1m%-20s\e[0m %s\n", display_name($cmd), $cmd->{helpText};
+        print_help_one($cmd->{name});
     }
 }
 
