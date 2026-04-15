@@ -104,7 +104,9 @@ sub find_command {
 
 sub display_name {
     my ($cmd) = @_;
-    return $cmd->{longName} // $cmd->{name};
+    return $cmd->{longName}
+        ? "$cmd->{longName} ($cmd->{name})"
+        : $cmd->{name};
 }
 
 # ── Execution ─────────────────────────────────────────────────────────────────
