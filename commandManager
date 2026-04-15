@@ -4,62 +4,103 @@ use strict;
 use warnings;
 use POSIX qw();
 use IO::Handle;
+use JSON::PP;
 
 STDOUT->autoflush(1);
 
-# ── Command definitions ───────────────────────────────────────────────────────
-# Each entry is a hashref with:
-#   name      - short identifier (used as CLI arg and alias name)
-#   longName  - optional, human-friendly label (falls back to name in help)
-#   helpText  - description shown in --help
-#   commands  - arrayref of bash commands (joined with && for alias)
+# ── Config file ───────────────────────────────────────────────────────────────
 
-my @COMMANDS = (
-    {
-        name     => 'greet',
-        longName => 'Say Hello',
-        helpText => 'Prints a greeting and the current date.',
-        commands => [
-            'echo "Hello from workflow!"',
-            'date',
-        ],
-    },
-    {
-        name     => 'listFiles',
-        longName => 'List Files (detailed)',
-        helpText => 'Lists all files in the current directory with details.',
-        commands => [
-            'ls -lah',
-        ],
-    },
-    {
-        name     => 'diskUsage',
-        longName => 'Disk Usage Summary',
-        helpText => 'Shows disk usage for the current directory, sorted by size.',
-        commands => [
-            'du -sh ./*',
-        ],
-    },
-    {
-        name     => 'sysInfo',
-        longName => 'System Info',
-        helpText => 'Displays OS info and uptime.',
-        commands => [
-            'uname -a',
-            'uptime',
-        ],
-    },
-);
+my $CONFIG_FILE = glob('~/.commandManager');
 
-# ── Install commands ──────────────────────────────────────────────────────────
-# These run first when --install / -i is passed, before aliases are set.
+my $TEMPLATE = {
+    install_commands => [
+        'echo "Running install steps..."',
+        'echo "Install complete."',
+    ],
+    commands => [
+        {
+            name     => 'greet',
+            longName => 'Say Hello',
+            helpText => 'Prints a greeting and the current date.',
+            commands => [ 'echo "Hello from workflow!"', 'date' ],
+            alias    => 1,
+        },
+        {
+            name     => 'listFiles',
+            longName => 'List Files (detailed)',
+            helpText => 'Lists all files in the current directory with details.',
+            commands => [ 'ls -lah' ],
+            alias    => 'lf',
+        },
+        {
+            name     => 'diskUsage',
+            longName => 'Disk Usage Summary',
+            helpText => 'Shows disk usage for the current directory, sorted by size.',
+            commands => [ 'du -sh ./*' ],
+            alias    => 0,
+        },
+        {
+            name     => 'sysInfo',
+            longName => 'System Info',
+            helpText => 'Displays OS info and uptime.',
+            commands => [ 'uname -a', 'uptime' ],
+        },
+    ],
+};
+
+sub write_template {
+    open(my $fh, '>', $CONFIG_FILE)
+        or die "\e[31mError:\e[0m Could not create '$CONFIG_FILE': $!\n";
+    print $fh JSON::PP->new->utf8->pretty->encode($TEMPLATE);
+    close($fh);
+}
+
+sub load_config {
+    unless (-e $CONFIG_FILE) {
+        print "\e[33mWarning:\e[0m '$CONFIG_FILE' not found. Creating template...\n";
+        write_template();
+        print "\e[32mCreated:\e[0m '$CONFIG_FILE' — edit it and re-run.\n";
+        exit 0;
+    }
+
+    open(my $fh, '<', $CONFIG_FILE)
+        or die "\e[31mError:\e[0m Could not read '$CONFIG_FILE': $!\n";
+    my $raw = do { local $/; <$fh> };
+    close($fh);
+
+    my $config = eval { JSON::PP->new->utf8->decode($raw) };
+    die "\e[31mError:\e[0m '$CONFIG_FILE' contains invalid JSON:\n  $@\n" if $@;
+
+    # Validate top-level structure
+    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain a 'commands' array.\n"
+        unless ref $config->{commands} eq 'ARRAY';
+    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain an 'install_commands' array.\n"
+        unless ref $config->{install_commands} eq 'ARRAY';
+
+    # Validate each command entry
+    for my $i (0 .. $#{ $config->{commands} }) {
+        my $cmd    = $config->{commands}[$i];
+        my $prefix = "\e[31mError:\e[0m Command #" . ($i + 1) . " in '$CONFIG_FILE'";
+        die "$prefix is missing required field 'name'.\n"
+            unless defined $cmd->{name} && $cmd->{name} =~ /\S/;
+        die "$prefix is missing required field 'helpText'.\n"
+            unless defined $cmd->{helpText} && $cmd->{helpText} =~ /\S/;
+        die "$prefix 'commands' must be a non-empty array.\n"
+            unless ref $cmd->{commands} eq 'ARRAY' && @{ $cmd->{commands} };
+    }
+
+    return $config;
+}
+
+# ── Load config ───────────────────────────────────────────────────────────────
+
+my $config           = load_config();
+my @COMMANDS         = @{ $config->{commands} };
+my @INSTALL_COMMANDS = @{ $config->{install_commands} };
+
+# ── Verbose flag ──────────────────────────────────────────────────────────────
 
 my $VERBOSE = grep { $_ eq '-v' } @ARGV;
-
-my @INSTALL_COMMANDS = (
-    'echo "Running install steps..."',
-    'echo "Install complete."',
-);
 
 # ── Terminal control ──────────────────────────────────────────────────────────
 
@@ -95,6 +136,13 @@ sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
 sub clear_line  { print "\e[2K\r" }
 
 # ── Command lookup ────────────────────────────────────────────────────────────
+
+sub resolve_alias {
+    my ($cmd) = @_;
+    my $a = $cmd->{alias};
+    return undef unless defined $a && $a;   # 0 or absent → no alias
+    return $a eq '1' ? $cmd->{name} : $a;  # 1 → use name, string → use string
+}
 
 sub find_command {
     my ($name) = @_;
@@ -138,8 +186,10 @@ sub run_install {
 
     print "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
     for my $cmd (@COMMANDS) {
-        my $joined = join(' && ', @{ $cmd->{commands} });
-        my $alias_cmd = "alias $cmd->{name}='$joined'";
+        my $alias = resolve_alias($cmd);
+        next unless defined $alias;
+        my $joined    = join(' && ', @{ $cmd->{commands} });
+        my $alias_cmd = "alias $alias='$joined'";
         print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
         system($alias_cmd);
     }
