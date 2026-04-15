@@ -184,13 +184,20 @@ With no arguments, an interactive arrow-key menu guides you through the configur
 
 #### Variable flags
 
+**First variable** — at most one of:
+
 | Flag | Description |
 |------|-------------|
-| `-d` | Date and time (`YYYY.MM.DD HH:MM`) — first variable |
-| `-t` | Time only (`HH:MM`) — first variable |
-| `-u` | Username — first variable |
-| `-f` | Full path — second variable |
-| `-c` | Current directory name — second variable |
+| `-d` | Date and time (`YYYY.MM.DD HH:MM`) |
+| `-t` | Time only (`HH:MM`) |
+| `-u` | Username |
+
+**Second variable** — at most one of:
+
+| Flag | Description |
+|------|-------------|
+| `-f` | Full path |
+| `-c` | Current directory name |
 
 #### Color flags
 
