@@ -22,14 +22,6 @@ Asks you three questions, then runs the merge for you:
 
 After a successful merge, the source branch is deleted locally (safe delete only — never forced).
 
-#### Setup
-
-```bash
-chmod +x gitmerge
-```
-
-Place it somewhere on your `$PATH`, or run it directly from your repo with `./gitmerge`.
-
 #### Usage
 
 ```bash
@@ -79,16 +71,6 @@ Reads a list of named commands from `~/.commandManager` (JSON) and lets you:
 2. **Run directly** — pass a command name as a flag to run it immediately
 3. **Install aliases** — set shell aliases for the current session so your commands are available by short name
 4. **Get help** — list all commands with descriptions, or look up a specific one
-
-### Setup
-
-```bash
-chmod +x workflow
-```
-
-Place it somewhere on your `$PATH`, or run it directly with `./workflow`.
-
-On first run, if `~/.commandManager` doesn't exist, the script creates a template file and exits — edit it to define your own commands, then run again.
 
 ### Config file
 
