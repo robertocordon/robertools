@@ -1,0 +1,327 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use POSIX qw();
+use IO::Handle;
+use JSON::PP;
+
+STDOUT->autoflush(1);
+
+# ── Config file ───────────────────────────────────────────────────────────────
+
+my $CONFIG_FILE = glob('~/.commandManager');
+
+my $TEMPLATE = {
+    install_commands => [
+        'echo "Running install steps..."',
+        'echo "Install complete."',
+    ],
+    commands => [
+        {
+            name     => 'greet',
+            longName => 'Say Hello',
+            helpText => 'Prints a greeting and the current date.',
+            commands => [ 'echo "Hello from workflow!"', 'date' ],
+            alias    => 1,
+        },
+        {
+            name     => 'listFiles',
+            longName => 'List Files (detailed)',
+            helpText => 'Lists all files in the current directory with details.',
+            commands => [ 'ls -lah' ],
+            alias    => 'lf',
+        },
+        {
+            name     => 'diskUsage',
+            longName => 'Disk Usage Summary',
+            helpText => 'Shows disk usage for the current directory, sorted by size.',
+            commands => [ 'du -sh ./*' ],
+            alias    => 0,
+        },
+        {
+            name     => 'sysInfo',
+            longName => 'System Info',
+            helpText => 'Displays OS info and uptime.',
+            commands => [ 'uname -a', 'uptime' ],
+        },
+    ],
+};
+
+sub write_template {
+    open(my $fh, '>', $CONFIG_FILE)
+        or die "\e[31mError:\e[0m Could not create '$CONFIG_FILE': $!\n";
+    print $fh JSON::PP->new->utf8->pretty->encode($TEMPLATE);
+    close($fh);
+}
+
+sub load_config {
+    unless (-e $CONFIG_FILE) {
+        print "\e[33mWarning:\e[0m '$CONFIG_FILE' not found. Creating template...\n";
+        write_template();
+        print "\e[32mCreated:\e[0m '$CONFIG_FILE' — edit it and re-run.\n";
+        exit 0;
+    }
+
+    open(my $fh, '<', $CONFIG_FILE)
+        or die "\e[31mError:\e[0m Could not read '$CONFIG_FILE': $!\n";
+    my $raw = do { local $/; <$fh> };
+    close($fh);
+
+    my $config = eval { JSON::PP->new->utf8->decode($raw) };
+    die "\e[31mError:\e[0m '$CONFIG_FILE' contains invalid JSON:\n  $@\n" if $@;
+
+    # Validate top-level structure
+    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain a 'commands' array.\n"
+        unless ref $config->{commands} eq 'ARRAY';
+    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain an 'install_commands' array.\n"
+        unless ref $config->{install_commands} eq 'ARRAY';
+
+    # Validate each command entry
+    for my $i (0 .. $#{ $config->{commands} }) {
+        my $cmd    = $config->{commands}[$i];
+        my $prefix = "\e[31mError:\e[0m Command #" . ($i + 1) . " in '$CONFIG_FILE'";
+        die "$prefix is missing required field 'name'.\n"
+            unless defined $cmd->{name} && $cmd->{name} =~ /\S/;
+        die "$prefix is missing required field 'helpText'.\n"
+            unless defined $cmd->{helpText} && $cmd->{helpText} =~ /\S/;
+        die "$prefix 'commands' must be a non-empty array.\n"
+            unless ref $cmd->{commands} eq 'ARRAY' && @{ $cmd->{commands} };
+    }
+
+    return $config;
+}
+
+# ── Load config ───────────────────────────────────────────────────────────────
+
+my $config           = load_config();
+my @COMMANDS         = @{ $config->{commands} };
+my @INSTALL_COMMANDS = @{ $config->{install_commands} };
+
+# ── Verbose flag ──────────────────────────────────────────────────────────────
+
+my $VERBOSE = grep { $_ eq '-v' } @ARGV;
+
+# ── Terminal control ──────────────────────────────────────────────────────────
+
+my $original_termios;
+
+sub enable_raw_mode {
+    $original_termios = POSIX::Termios->new;     # allocate empty termios struct (save slot)
+    $original_termios->getattr(0);               # populate it with current terminal settings from stdin — saved for restore
+
+    my $raw = POSIX::Termios->new;               # allocate another empty struct (this one we'll modify)
+    $raw->getattr(0);                            # populate it with current settings too, so we start from a valid state
+
+    $raw->setlflag(                              # update the "local flags" bitmask:
+        $raw->getlflag & ~(POSIX::ECHO |        #   ECHO off — don't print keypresses to screen
+                           POSIX::ICANON)       #   ICANON off — deliver each keypress immediately, don't wait for Enter
+    );
+    $raw->setcc(POSIX::VMIN,  1);               # block sysread until at least 1 character is available
+    $raw->setcc(POSIX::VTIME, 0);               # no timeout — wait as long as needed
+    $raw->setattr(0, POSIX::TCSANOW);           # apply modified settings to stdin immediately
+}
+
+sub restore_terminal {
+    $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
+}
+
+END { restore_terminal() }
+
+# ── ANSI helpers ──────────────────────────────────────────────────────────────
+
+sub hide_cursor { print "\e[?25l" }
+sub show_cursor { print "\e[?25h" }
+sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
+sub clear_line  { print "\e[2K\r" }
+
+# ── Command lookup ────────────────────────────────────────────────────────────
+
+sub resolve_alias {
+    my ($cmd) = @_;
+    my $a = $cmd->{alias};
+    return undef unless defined $a && $a;   # 0 or absent → no alias
+    return $a eq '1' ? $cmd->{name} : $a;  # 1 → use name, string → use string
+}
+
+sub find_command {
+    my ($name) = @_;
+    for my $cmd (@COMMANDS) {
+        return $cmd if $cmd->{name} eq $name;
+    }
+    return undef;
+}
+
+sub display_name {
+    my ($cmd) = @_;
+    return $cmd->{longName}
+        ? "$cmd->{longName} ($cmd->{name})"
+        : $cmd->{name};
+}
+
+# ── Execution ─────────────────────────────────────────────────────────────────
+
+sub run_shell_command {
+    my ($shell_cmd) = @_;
+    print "  \e[33m\$ $shell_cmd\e[0m\n" if $VERBOSE;
+    system($shell_cmd);
+    return $? == 0;
+}
+
+sub run_command_entry {
+    my ($cmd) = @_;
+    print "\e[1mRunning: \e[0m" . display_name($cmd) . "\n";
+    for my $c (@{ $cmd->{commands} }) {
+        run_shell_command($c) or warn "\e[31mWarning:\e[0m command exited non-zero.\n";
+    }
+}
+
+# ── Install mode ──────────────────────────────────────────────────────────────
+
+sub run_install {
+    print "\e[1mRunning install steps...\e[0m\n" if $VERBOSE;
+    for my $c (@INSTALL_COMMANDS) {
+        run_shell_command($c);
+    }
+
+    print "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
+    for my $cmd (@COMMANDS) {
+        my $alias = resolve_alias($cmd);
+        next unless defined $alias;
+        my $joined    = join(' && ', @{ $cmd->{commands} });
+        my $alias_cmd = "alias $alias='$joined'";
+        print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
+        system($alias_cmd);
+    }
+    print "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n" if $VERBOSE;
+}
+
+# ── Help mode ─────────────────────────────────────────────────────────────────
+
+sub print_help_all {
+    print "\e[1mAvailable commands:\e[0m\n\n";
+    for my $cmd (@COMMANDS) {
+        print_help_one($cmd->{name});
+    }
+}
+
+sub print_help_one {
+    my ($name) = @_;
+    my $cmd = find_command($name);
+    unless ($cmd) {
+        print "\e[31mError:\e[0m No command named '$name'.\n";
+        exit 1;
+    }
+    printf "\e[1m%s\e[0m\n%s\n", display_name($cmd), $cmd->{helpText};
+}
+
+# ── Interactive selector ──────────────────────────────────────────────────────
+
+sub interactive_select {
+    my @options   = map { display_name($_) } @COMMANDS;
+    my $n         = scalar @options;
+    my $selected  = 0;
+
+    hide_cursor();
+    enable_raw_mode();
+
+    print "\e[1mSelect a command:\e[0m\n";
+
+    my $render = sub {
+        for my $i (0 .. $n - 1) {
+            clear_line();
+            if ($i == $selected) {
+                print "  \e[7m> $options[$i] \e[0m\n";
+            } else {
+                print "    $options[$i]\n";
+            }
+        }
+    };
+
+    $render->();
+
+    while (1) {
+        my $ch = '';
+        sysread(STDIN, $ch, 1);
+
+        if ($ch eq "\e") {
+            my $seq = '';
+            sysread(STDIN, $seq, 2);
+            if    ($seq eq '[A') { $selected = ($selected - 1 + $n) % $n }
+            elsif ($seq eq '[B') { $selected = ($selected + 1)      % $n }
+        } elsif ($ch eq "\n" || $ch eq "\r") {
+            last;
+        }
+
+        move_up($n);
+        $render->();
+    }
+
+    restore_terminal();
+    show_cursor();
+
+    # Collapse menu to a single summary line
+    move_up($n + 1);
+    for my $i (0 .. $n) { clear_line(); print "\n" }
+    move_up($n + 1);
+    clear_line();
+    print "\e[1mSelect a command:\e[0m \e[32m$options[$selected]\e[0m\n";
+
+    return $COMMANDS[$selected];
+}
+
+# ── Argument parsing & dispatch ───────────────────────────────────────────────
+
+sub main {
+    my @args = @ARGV;
+
+    # No arguments → interactive selector
+    unless (@args) {
+        my $cmd = interactive_select();
+        run_command_entry($cmd);
+        return;
+    }
+
+    my $first = $args[0];
+
+    # --install / -i
+    if ($first eq '--install' || $first eq '-i') {
+        run_install();
+        return;
+    }
+
+    # --help [name]
+    if ($first eq '--help') {
+        if (defined $args[1]) {
+            print_help_one($args[1]);
+        } else {
+            print_help_all();
+        }
+        return;
+    }
+
+    # --<name>  →  run that command
+    if ($first =~ /^--(.+)$/) {
+        my $name = $1;
+        my $cmd  = find_command($name);
+        unless ($cmd) {
+            print "\e[31mError:\e[0m Unknown command '$name'.\n";
+            print "Run without arguments to browse commands interactively, or use --help.\n";
+            exit 1;
+        }
+        run_command_entry($cmd);
+        return;
+    }
+
+    # Unrecognised argument
+    print "\e[31mError:\e[0m Unrecognised argument '$first'.\n";
+    print "Usage:\n";
+    print "  $0                  Interactive selector\n";
+    print "  $0 --install | -i   Run install steps and set session aliases\n";
+    print "  $0 --help [name]    Show help for all or one command\n";
+    print "  $0 --<name>         Run a specific command\n";
+    exit 1;
+}
+
+main();
+
