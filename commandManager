@@ -94,6 +94,11 @@ sub load_config {
 
 # ── Load config ───────────────────────────────────────────────────────────────
 
+my $SCRIPT_PATH = do {
+    use Cwd 'abs_path';
+    abs_path($0);
+};
+
 my $config           = load_config();
 my @COMMANDS         = @{ $config->{commands} };
 my @INSTALL_COMMANDS = @{ $config->{install_commands} };
@@ -188,8 +193,7 @@ sub run_install {
     for my $cmd (@COMMANDS) {
         my $alias = resolve_alias($cmd);
         next unless defined $alias;
-        my $joined    = join(' && ', @{ $cmd->{commands} });
-        my $alias_cmd = "alias $alias='$joined'";
+        my $alias_cmd = "alias $alias='$SCRIPT_PATH --$cmd->{name}'";
         print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
         system($alias_cmd);
     }
