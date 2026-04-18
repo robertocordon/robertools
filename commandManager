@@ -277,7 +277,7 @@ sub interactive_select {
 # ── Argument parsing & dispatch ───────────────────────────────────────────────
 
 sub main {
-    my @args = @ARGV;
+    my @args = grep { $_ ne '-v' } @ARGV;
 
     # No arguments → interactive selector
     unless (@args) {
