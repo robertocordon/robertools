@@ -94,6 +94,11 @@ sub load_config {
 
 # ── Load config ───────────────────────────────────────────────────────────────
 
+my $SCRIPT_PATH = do {
+    use Cwd 'abs_path';
+    abs_path($0);
+};
+
 my $config           = load_config();
 my @COMMANDS         = @{ $config->{commands} };
 my @INSTALL_COMMANDS = @{ $config->{install_commands} };
@@ -163,8 +168,8 @@ sub display_name {
 
 sub run_shell_command {
     my ($shell_cmd) = @_;
-    print "  \e[33m\$ $shell_cmd\e[0m\n" if $VERBOSE;
-    system($shell_cmd);
+    print STDERR "  \e[33m\$ $shell_cmd\e[0m\n" if $VERBOSE;
+    system($shell_cmd . ' >&2');
     return $? == 0;
 }
 
@@ -179,21 +184,20 @@ sub run_command_entry {
 # ── Install mode ──────────────────────────────────────────────────────────────
 
 sub run_install {
-    print "\e[1mRunning install steps...\e[0m\n" if $VERBOSE;
+    print STDERR "\e[1mRunning install steps...\e[0m\n" if $VERBOSE;
     for my $c (@INSTALL_COMMANDS) {
         run_shell_command($c);
     }
 
-    print "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
+    print STDERR "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
     for my $cmd (@COMMANDS) {
         my $alias = resolve_alias($cmd);
         next unless defined $alias;
-        my $joined    = join(' && ', @{ $cmd->{commands} });
-        my $alias_cmd = "alias $alias='$joined'";
-        print "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
-        system($alias_cmd);
+        my $alias_cmd = "alias $alias='$SCRIPT_PATH --$cmd->{name}'";
+        print STDERR "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
+        print "$alias_cmd;";
     }
-    print "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n" if $VERBOSE;
+    print STDERR "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n" if $VERBOSE;
 }
 
 # ── Help mode ─────────────────────────────────────────────────────────────────
@@ -273,7 +277,7 @@ sub interactive_select {
 # ── Argument parsing & dispatch ───────────────────────────────────────────────
 
 sub main {
-    my @args = @ARGV;
+    my @args = grep { $_ ne '-v' } @ARGV;
 
     # No arguments → interactive selector
     unless (@args) {
