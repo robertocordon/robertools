@@ -1,38 +1,12 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use POSIX qw();
 use IO::Handle;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+use Terminal;
 
 STDOUT->autoflush(1);
-
-# ── Terminal control ─────────────────────────────────────────────────────────
-my $original_termios;
-
-sub enable_raw_mode {
-    $original_termios = POSIX::Termios->new;
-    $original_termios->getattr(0);
-    my $raw_termios = POSIX::Termios->new;
-    $raw_termios->getattr(0);
-    $raw_termios->setlflag(
-        $raw_termios->getlflag & ~(POSIX::ECHO | POSIX::ICANON)
-    );
-    $raw_termios->setcc(POSIX::VMIN,  1);
-    $raw_termios->setcc(POSIX::VTIME, 0);
-    $raw_termios->setattr(0, POSIX::TCSANOW);
-}
-
-sub restore_terminal {
-    $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
-}
-
-END { restore_terminal(); }
-
-# ── ANSI helpers ─────────────────────────────────────────────────────────────
-sub hide_cursor { print "\e[?25l" }
-sub show_cursor { print "\e[?25h" }
-sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
-sub clear_line  { print "\e[2K\r" }
 
 # ── Git helpers ──────────────────────────────────────────────────────────────
 sub get_local_branches {
@@ -61,92 +35,6 @@ sub run_command {
     print "  \e[33m\$ $command\e[0m\n";
     system($command);
     return $? == 0;
-}
-
-# ── Interactive menu ──────────────────────────────────────────────────────────
-# $prompt         – question shown above the menu
-# $default_index  – initially highlighted item
-# $exclude_value  – branch that is dimmed/unselectable (undef for none)
-# $current_branch – branch to mark with a trailing " *"
-# @options        – list of branch names
-sub interactive_menu {
-    my ($prompt, $default_index, $exclude_value, $current_branch, @options) = @_;
-
-    my $selected_index = $default_index // 0;
-    my $num_options    = scalar @options;
-
-    hide_cursor();
-    enable_raw_mode();
-
-    print "\e[1m$prompt\e[0m\n";
-
-    my $render_menu = sub {
-        for my $i (0 .. $num_options - 1) {
-            clear_line();
-            my $branch_name     = $options[$i];
-            my $is_excluded     = defined $exclude_value && $branch_name eq $exclude_value;
-            my $current_marker  = ($branch_name eq $current_branch) ? ' *' : '';
-
-            if ($i == $selected_index) {
-                if ($is_excluded) {
-                    print "  \e[41m\e[37m> $branch_name$current_marker (already selected above) \e[0m\n";
-                } else {
-                    print "  \e[7m> $branch_name$current_marker \e[0m\n";
-                }
-            } else {
-                if ($is_excluded) {
-                    print "  \e[2m  $branch_name$current_marker\e[0m\n";
-                } else {
-                    print "    $branch_name$current_marker\n";
-                }
-            }
-        }
-    };
-
-    $render_menu->();
-
-    while (1) {
-        my $key_char = '';
-        sysread(STDIN, $key_char, 1);
-
-        if ($key_char eq "\e") {
-            my $seq = '';
-            sysread(STDIN, $seq, 2);
-            if ($seq eq '[A') {
-                $selected_index = ($selected_index - 1 + $num_options) % $num_options;
-            } elsif ($seq eq '[B') {
-                $selected_index = ($selected_index + 1) % $num_options;
-            }
-        } elsif ($key_char eq "\n" || $key_char eq "\r") {
-            my $chosen = $options[$selected_index];
-            if (defined $exclude_value && $chosen eq $exclude_value) {
-                move_up($num_options);
-                $render_menu->();
-                next;
-            }
-            last;
-        }
-
-        move_up($num_options);
-        $render_menu->();
-    }
-
-    restore_terminal();
-    show_cursor();
-
-    my $chosen_branch = $options[$selected_index];
-
-    # Collapse menu + prompt into a single summary line
-    move_up($num_options + 1);
-    for my $i (0 .. $num_options) {
-        clear_line();
-        print "\n";
-    }
-    move_up($num_options + 1);
-    clear_line();
-    print "\e[1m$prompt\e[0m \e[32m$chosen_branch\e[0m\n";
-
-    return $chosen_branch;
 }
 
 # ── Smart branch name prompt ──────────────────────────────────────────────────
@@ -236,13 +124,13 @@ for my $i (0 .. $#local_branches) {
 }
 
 # Q1 – branch to merge (source)
-my $source_branch = interactive_menu(
+my $source_idx = interactive_select(
     'Which branch to merge?',
-    $default_source_index,
-    undef,
-    $current_branch,
-    @local_branches
+    \@local_branches,
+    default => $default_source_index,
+    mark    => $current_branch,
 );
+my $source_branch = $local_branches[$source_idx];
 
 # Q2 – branch to merge into (target)
 my $default_target_index = 0;
@@ -253,13 +141,14 @@ for my $i (0 .. $#local_branches) {
     }
 }
 
-my $target_branch = interactive_menu(
+my $target_idx = interactive_select(
     'Which branch to merge into?',
-    $default_target_index,
-    $source_branch,
-    $current_branch,
-    @local_branches
+    \@local_branches,
+    default => $default_target_index,
+    exclude => $source_branch,
+    mark    => $current_branch,
 );
+my $target_branch = $local_branches[$target_idx];
 
 # Q3 – optional new branch name with smart prefill
 my $new_branch_name = prompt_new_branch_name($source_branch);
@@ -314,4 +203,3 @@ if ($new_branch_name ne '') {
 
 my $final_branch = ($new_branch_name ne '') ? $new_branch_name : $target_branch;
 print "\n\e[32mDone!\e[0m\nNow on branch \e[1m$final_branch\e[0m\n";
-
