@@ -9,7 +9,33 @@ our @EXPORT = qw(
     enable_raw_mode restore_terminal
     hide_cursor show_cursor move_up clear_line
     interactive_select
+    $FORMAT_RESET
+    $FORMAT_BOLD
+    $FORMAT_DIM
+    $FORMAT_REVERSE
+    $FORMAT_RED
+    $FORMAT_GREEN
+    $FORMAT_YELLOW
+    $FORMAT_CYAN
+    $FORMAT_WHITE
+    $FORMAT_BG_RED
 );
+
+# ── Formatting ────────────────────────────────────────────────────────────────
+
+our $FORMAT_RESET   = "\e[0m";
+
+our $FORMAT_BOLD    = "\e[1m";
+our $FORMAT_DIM     = "\e[2m";
+our $FORMAT_REVERSE = "\e[7m";
+
+our $FORMAT_RED     = "\e[31m";
+our $FORMAT_GREEN   = "\e[32m";
+our $FORMAT_YELLOW  = "\e[33m";
+our $FORMAT_CYAN    = "\e[36m";
+our $FORMAT_WHITE   = "\e[37m";
+
+our $FORMAT_BG_RED  = "\e[41m";
 
 # ── Terminal control ──────────────────────────────────────────────────────────
 
@@ -62,7 +88,7 @@ sub interactive_select {
     hide_cursor();
     enable_raw_mode();
 
-    print "\e[1m$prompt\e[0m\n";
+    print "${FORMAT_BOLD}$prompt${FORMAT_RESET}\n";
 
     my $render = sub {
         for my $i (0 .. $n - 1) {
@@ -73,13 +99,13 @@ sub interactive_select {
 
             if ($i == $selected) {
                 if ($is_excluded) {
-                    print "  \e[41m\e[37m> $label$suffix (already selected above) \e[0m\n";
+                    print "  ${FORMAT_BG_RED}${FORMAT_WHITE}> $label$suffix (already selected above) ${FORMAT_RESET}\n";
                 } else {
-                    print "  \e[7m> $label$suffix \e[0m\n";
+                    print "  ${FORMAT_REVERSE}> $label$suffix ${FORMAT_RESET}\n";
                 }
             } else {
                 if ($is_excluded) {
-                    print "  \e[2m  $label$suffix\e[0m\n";
+                    print "  ${FORMAT_DIM}  $label$suffix${FORMAT_RESET}\n";
                 } else {
                     print "    $label$suffix\n";
                 }
@@ -119,7 +145,7 @@ sub interactive_select {
     for my $i (0 .. $n) { clear_line(); print "\n" }
     move_up($n + 1);
     clear_line();
-    print "\e[1m$prompt\e[0m \e[32m$options[$selected]\e[0m\n";
+    print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$options[$selected]${FORMAT_RESET}\n";
 
     return $selected;
 }
