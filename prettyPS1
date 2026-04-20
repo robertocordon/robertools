@@ -107,7 +107,7 @@ sub run_cli {
 # ── Interactive mode ──────────────────────────────────────────────────────────
 
 sub run_interactive {
-    print "\n\e[1mPS1 Customizer\e[0m\n\n";
+    print "\n${FORMAT_BOLD}PS1 Customizer${FORMAT_RESET}\n\n";
 
     # ── Question 1: first variable ────────────────────────────────────────────
 
@@ -151,7 +151,7 @@ sub run_interactive {
     # ── Validation ────────────────────────────────────────────────────────────
 
     if ($var1_code eq '' && $var2_code eq '') {
-        print "\e[31mError:\e[0m Both variables cannot be blank. Please re-run and select at least one.\n";
+        print "${FORMAT_RED}Error:${FORMAT_RESET} Both variables cannot be blank. Please re-run and select at least one.\n";
         exit 1;
     }
 
@@ -159,12 +159,12 @@ sub run_interactive {
 
     my $ps1 = build_ps1($var1_code, $var1_color_code, $var2_code, $var2_color_code);
 
-    print "\e[1mGenerated PS1:\e[0m\n";
-    print "  \e[33m$ps1\e[0m\n\n";
-    print "To apply immediately: \e[1meval \"\$(./prettyPS1 ...)\"\e[0m\n\n";
-    print "To make permanent, add to your \e[1m~/.bashrc\e[0m or \e[1m~/.bash_profile\e[0m:\n\n";
-    print "  \e[36mexport PS1=\"$ps1\"\e[0m\n\n";
-    print "Then reload with: \e[1msource ~/.bashrc\e[0m\n\n";
+    print "${FORMAT_BOLD}Generated PS1:${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}$ps1${FORMAT_RESET}\n\n";
+    print "To apply immediately: ${FORMAT_BOLD}eval \"\$(./prettyPS1 ...)\"${FORMAT_RESET}\n\n";
+    print "To make permanent, add to your ${FORMAT_BOLD}~/.bashrc${FORMAT_RESET} or ${FORMAT_BOLD}~/.bash_profile${FORMAT_RESET}:\n\n";
+    print "  ${FORMAT_CYAN}export PS1=\"$ps1\"${FORMAT_RESET}\n\n";
+    print "Then reload with: ${FORMAT_BOLD}source ~/.bashrc${FORMAT_RESET}\n\n";
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

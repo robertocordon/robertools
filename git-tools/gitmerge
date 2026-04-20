@@ -32,7 +32,7 @@ sub get_current_branch {
 
 sub run_command {
     my ($command) = @_;
-    print "  \e[33m\$ $command\e[0m\n";
+    print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
     system($command);
     return $? == 0;
 }
@@ -49,7 +49,7 @@ sub prompt_new_branch_name {
     enable_raw_mode();
     show_cursor();
 
-    print "\n\e[1mName of new branch?\e[0m \e[2m(leave blank to skip)\e[0m\n";
+    print "\n${FORMAT_BOLD}Name of new branch?${FORMAT_RESET} ${FORMAT_DIM}(leave blank to skip)${FORMAT_RESET}\n";
     print "> $prefill_text";
 
     my $typed_text = '';
@@ -90,11 +90,11 @@ sub prompt_new_branch_name {
     # Collapse to a single summary line
     move_up(2);
     clear_line();
-    print "\e[1mName of new branch?\e[0m";
+    print "${FORMAT_BOLD}Name of new branch?${FORMAT_RESET}";
     if ($full_input ne '') {
-        print " \e[32m$full_input\e[0m";
+        print " ${FORMAT_GREEN}$full_input${FORMAT_RESET}";
     } else {
-        print " \e[2m(skipped)\e[0m";
+        print " ${FORMAT_DIM}(skipped)${FORMAT_RESET}";
     }
     print "\n";
 
@@ -159,11 +159,11 @@ my $merge_command = $flag_message
     : "git merge --no-ff --no-edit $source_branch";
 
 if ($flag_interactive) {
-    print "\n\e[1mAbout to run:\e[0m\n";
-    print "  \e[33m\$ git checkout $target_branch\e[0m\n";
-    print "  \e[33m\$ $merge_command\e[0m\n";
-    print "  \e[33m\$ git branch -d $source_branch\e[0m\n";
-    print "  \e[33m\$ git checkout -b $new_branch_name\e[0m\n" if $new_branch_name ne '';
+    print "\n${FORMAT_BOLD}About to run:${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ git checkout $target_branch${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ $merge_command${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ git branch -d $source_branch${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ git checkout -b $new_branch_name${FORMAT_RESET}\n" if $new_branch_name ne '';
     print "\nProceed? [y/N] ";
 
     restore_terminal();
@@ -183,23 +183,23 @@ if ($flag_interactive) {
 
 # ── Execute ───────────────────────────────────────────────────────────────────
 unless (run_command("git checkout $target_branch")) {
-    die "\e[31mError:\e[0m Failed to check out '$target_branch'. Aborting.\n";
+    die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$target_branch'. Aborting.\n";
 }
 
 unless (run_command($merge_command)) {
-    print "\e[31mMerge failed.\e[0m Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
+    print "${FORMAT_RED}Merge failed.${FORMAT_RESET} Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
     exit 1;
 }
 
 unless (run_command("git branch -d $source_branch")) {
-    print "\e[33mWarning:\e[0m Could not delete '$source_branch'. Skipping deletion.\n";
+    print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$source_branch'. Skipping deletion.\n";
 }
 
 if ($new_branch_name ne '') {
     unless (run_command("git checkout -b $new_branch_name")) {
-        die "\e[31mError:\e[0m Failed to create new branch '$new_branch_name'.\n";
+        die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create new branch '$new_branch_name'.\n";
     }
 }
 
 my $final_branch = ($new_branch_name ne '') ? $new_branch_name : $target_branch;
-print "\n\e[32mDone!\e[0m\nNow on branch \e[1m$final_branch\e[0m\n";
+print "\n${FORMAT_GREEN}Done!${FORMAT_RESET}\nNow on branch ${FORMAT_BOLD}$final_branch${FORMAT_RESET}\n";

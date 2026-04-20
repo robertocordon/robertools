@@ -52,37 +52,37 @@ my $TEMPLATE = {
 
 sub write_template {
     open(my $fh, '>', $CONFIG_FILE)
-        or die "\e[31mError:\e[0m Could not create '$CONFIG_FILE': $!\n";
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not create '$CONFIG_FILE': $!\n";
     print $fh JSON::PP->new->utf8->pretty->encode($TEMPLATE);
     close($fh);
 }
 
 sub load_config {
     unless (-e $CONFIG_FILE) {
-        print "\e[33mWarning:\e[0m '$CONFIG_FILE' not found. Creating template...\n";
+        print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} '$CONFIG_FILE' not found. Creating template...\n";
         write_template();
-        print "\e[32mCreated:\e[0m '$CONFIG_FILE' — edit it and re-run.\n";
+        print "${FORMAT_GREEN}Created:${FORMAT_RESET} '$CONFIG_FILE' — edit it and re-run.\n";
         exit 0;
     }
 
     open(my $fh, '<', $CONFIG_FILE)
-        or die "\e[31mError:\e[0m Could not read '$CONFIG_FILE': $!\n";
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read '$CONFIG_FILE': $!\n";
     my $raw = do { local $/; <$fh> };
     close($fh);
 
     my $config = eval { JSON::PP->new->utf8->decode($raw) };
-    die "\e[31mError:\e[0m '$CONFIG_FILE' contains invalid JSON:\n  $@\n" if $@;
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' contains invalid JSON:\n  $@\n" if $@;
 
     # Validate top-level structure
-    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain a 'commands' array.\n"
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' must contain a 'commands' array.\n"
         unless ref $config->{commands} eq 'ARRAY';
-    die "\e[31mError:\e[0m '$CONFIG_FILE' must contain an 'install_commands' array.\n"
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' must contain an 'install_commands' array.\n"
         unless ref $config->{install_commands} eq 'ARRAY';
 
     # Validate each command entry
     for my $i (0 .. $#{ $config->{commands} }) {
         my $cmd    = $config->{commands}[$i];
-        my $prefix = "\e[31mError:\e[0m Command #" . ($i + 1) . " in '$CONFIG_FILE'";
+        my $prefix = "${FORMAT_RED}Error:${FORMAT_RESET} Command #" . ($i + 1) . " in '$CONFIG_FILE'";
         die "$prefix is missing required field 'name'.\n"
             unless defined $cmd->{name} && $cmd->{name} =~ /\S/;
         die "$prefix is missing required field 'helpText'.\n"
@@ -137,42 +137,42 @@ sub display_name {
 
 sub run_shell_command {
     my ($shell_cmd) = @_;
-    print STDERR "  \e[33m\$ $shell_cmd\e[0m\n" if $VERBOSE;
+    print STDERR "  ${FORMAT_YELLOW}\$ $shell_cmd${FORMAT_RESET}\n" if $VERBOSE;
     system($shell_cmd . ' >&2');
     return $? == 0;
 }
 
 sub run_command_entry {
     my ($cmd) = @_;
-    print "\e[1mRunning: \e[0m" . display_name($cmd) . "\n";
+    print "${FORMAT_BOLD}Running: ${FORMAT_RESET}" . display_name($cmd) . "\n";
     for my $c (@{ $cmd->{commands} }) {
-        run_shell_command($c) or warn "\e[31mWarning:\e[0m command exited non-zero.\n";
+        run_shell_command($c) or warn "${FORMAT_RED}Warning:${FORMAT_RESET} command exited non-zero.\n";
     }
 }
 
 # ── Install mode ──────────────────────────────────────────────────────────────
 
 sub run_install {
-    print STDERR "\e[1mRunning install steps...\e[0m\n" if $VERBOSE;
+    print STDERR "${FORMAT_BOLD}Running install steps...${FORMAT_RESET}\n" if $VERBOSE;
     for my $c (@INSTALL_COMMANDS) {
         run_shell_command($c);
     }
 
-    print STDERR "\n\e[1mSetting aliases for this session...\e[0m\n" if $VERBOSE;
+    print STDERR "\n${FORMAT_BOLD}Setting aliases for this session...${FORMAT_RESET}\n" if $VERBOSE;
     for my $cmd (@COMMANDS) {
         my $alias = resolve_alias($cmd);
         next unless defined $alias;
         my $alias_cmd = "alias $alias='$SCRIPT_PATH --$cmd->{name}'";
-        print STDERR "  \e[33m\$ $alias_cmd\e[0m\n" if $VERBOSE;
+        print STDERR "  ${FORMAT_YELLOW}\$ $alias_cmd${FORMAT_RESET}\n" if $VERBOSE;
         print "$alias_cmd;";
     }
-    print STDERR "\n\e[32mDone!\e[0m Aliases are active in this shell session.\n" if $VERBOSE;
+    print STDERR "\n${FORMAT_GREEN}Done!${FORMAT_RESET} Aliases are active in this shell session.\n" if $VERBOSE;
 }
 
 # ── Help mode ─────────────────────────────────────────────────────────────────
 
 sub print_help_all {
-    print "\e[1mAvailable commands:\e[0m\n\n";
+    print "${FORMAT_BOLD}Available commands:${FORMAT_RESET}\n\n";
     for my $cmd (@COMMANDS) {
         print_help_one($cmd->{name});
     }
@@ -182,10 +182,10 @@ sub print_help_one {
     my ($name) = @_;
     my $cmd = find_command($name);
     unless ($cmd) {
-        print "\e[31mError:\e[0m No command named '$name'.\n";
+        print "${FORMAT_RED}Error:${FORMAT_RESET} No command named '$name'.\n";
         exit 1;
     }
-    printf "\e[1m%s\e[0m\n%s\n", display_name($cmd), $cmd->{helpText};
+    printf "${FORMAT_BOLD}%s${FORMAT_RESET}\n%s\n", display_name($cmd), $cmd->{helpText};
 }
 
 # ── Argument parsing & dispatch ───────────────────────────────────────────────
@@ -224,7 +224,7 @@ sub main {
         my $name = $1;
         my $cmd  = find_command($name);
         unless ($cmd) {
-            print "\e[31mError:\e[0m Unknown command '$name'.\n";
+            print "${FORMAT_RED}Error:${FORMAT_RESET} Unknown command '$name'.\n";
             print "Run without arguments to browse commands interactively, or use --help.\n";
             exit 1;
         }
@@ -233,7 +233,7 @@ sub main {
     }
 
     # Unrecognised argument
-    print "\e[31mError:\e[0m Unrecognised argument '$first'.\n";
+    print "${FORMAT_RED}Error:${FORMAT_RESET} Unrecognised argument '$first'.\n";
     print "Usage:\n";
     print "  $0                  Interactive selector\n";
     print "  $0 --install | -i   Run install steps and set session aliases\n";
