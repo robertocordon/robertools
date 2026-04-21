@@ -30,6 +30,14 @@ sub get_current_branch {
     return $branch;
 }
 
+sub first_index {
+    my ($array_ref, $predicate) = @_;
+    for my $i (0 .. $#$array_ref) {
+        return $i if $predicate->($array_ref->[$i]);
+    }
+    return 0;
+}
+
 sub run_command {
     my ($command) = @_;
     print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
@@ -115,13 +123,7 @@ for my $arg (@ARGV) {
 my @local_branches  = get_local_branches();
 my $current_branch  = get_current_branch();
 
-my $default_source_index = 0;
-for my $i (0 .. $#local_branches) {
-    if ($local_branches[$i] eq $current_branch) {
-        $default_source_index = $i;
-        last;
-    }
-}
+my $default_source_index = first_index(\@local_branches, sub { $_[0] eq $current_branch });
 
 # Q1 – branch to merge (source)
 my $source_idx = interactive_select(
@@ -133,13 +135,7 @@ my $source_idx = interactive_select(
 my $source_branch = $local_branches[$source_idx];
 
 # Q2 – branch to merge into (target)
-my $default_target_index = 0;
-for my $i (0 .. $#local_branches) {
-    if ($local_branches[$i] ne $source_branch) {
-        $default_target_index = $i;
-        last;
-    }
-}
+my $default_target_index = first_index(\@local_branches, sub { $_[0] ne $source_branch });
 
 my $target_idx = interactive_select(
     'Which branch to merge into?',
