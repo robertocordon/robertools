@@ -59,7 +59,7 @@ sub select_version {
         @options = ("v" . ($major + 1) . ".0", "v$major." . ($minor + 1), "other");
     } else {
         print "No previous version found — this will be the first release.\n\n";
-        @options = ("v1.0", "other");
+        @options = ("v1.0", "v0.1", "other");
     }
 
     my $idx = interactive_select('Select the new version:', \@options);
@@ -112,7 +112,7 @@ sub open_editor {
 
     open my $rfh, '<', $tmpfile
         or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read temp file: $!\n";
-    my $notes = do { local $/; <$rfh> };
+    my $notes = do { local $/; <$rfh> };	#read entire file in one go
     close $rfh;
 
     return $notes;
