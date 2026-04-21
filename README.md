@@ -238,10 +238,6 @@ Apply to the current session immediately.
 
 # Upcoming Tools
 
-## gitrelease
-
-Automates the release process. Creates a release branch off `develop`, appends an entry to the release notes file, then merges into both `develop` and `master`. Tags the resulting commit on `master` with the release version.
-
 ## gitundo
 
 Undoes the last commit, leaving your changes intact in the working directory — a safe way to step back without losing work.
