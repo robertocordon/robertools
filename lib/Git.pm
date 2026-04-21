@@ -11,6 +11,13 @@ our @EXPORT = qw(
     get_repo_root
     get_latest_version
     run_command
+    git_checkout
+    git_create_branch
+    git_merge
+    git_delete_branch
+    git_add
+    git_commit
+    git_tag
 );
 
 # ── Repository info ───────────────────────────────────────────────────────────
@@ -56,13 +63,31 @@ sub get_latest_version {
     return $sorted[-1];
 }
 
-# ── Execution ─────────────────────────────────────────────────────────────────
+# ── Git commands ─────────────────────────────────────────────────────────────
 
 sub run_command {
     my ($command) = @_;
     print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
     system($command);
     return $? == 0;
+}
+
+sub git_checkout      { run_command("git checkout $_[0]") }
+sub git_create_branch { run_command("git checkout -b $_[0]") }
+sub git_delete_branch { run_command("git branch -d $_[0]") }
+sub git_add           { run_command("git add '$_[0]'") }
+sub git_tag           { run_command("git tag $_[0]") }
+
+sub git_commit {
+    my ($message) = @_;
+    (my $safe = $message) =~ s/'/'\\''/g;
+    run_command("git commit -m '$safe'");
+}
+
+sub git_merge {
+    my ($branch, %opts) = @_;
+    my $flags = $opts{edit} ? '--no-ff' : '--no-ff --no-edit';
+    run_command("git merge $flags $branch");
 }
 
 1;

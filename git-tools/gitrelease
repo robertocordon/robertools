@@ -133,9 +133,9 @@ if ($current_branch =~ m{^release/(v\d+\.\d+)$}) {
 
     # Step 3: create release branch off develop
     print "\n";
-    run_command("git checkout $DEVELOP_BRANCH")
+    git_checkout($DEVELOP_BRANCH)
         or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
-    run_command("git checkout -b $release_branch")
+    git_create_branch($release_branch)
         or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create branch '$release_branch'.\n";
 
     # Step 4: open editor with release notes template
@@ -150,9 +150,9 @@ if ($current_branch =~ m{^release/(v\d+\.\d+)$}) {
 
     # Step 6: commit
     print "\n";
-    run_command("git add '$notes_path'")
+    git_add($notes_path)
         or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to stage '$NOTES_FILE'.\n";
-    run_command("git commit -m 'updated release notes'")
+    git_commit('updated release notes')
         or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to commit release notes.\n";
 }
 
@@ -177,20 +177,20 @@ my $existing_tag = `git tag --list "$version" 2>/dev/null`;
 chomp $existing_tag;
 die "${FORMAT_RED}Error:${FORMAT_RESET} Tag '$version' already exists.\n" if $existing_tag eq $version;
 
-run_command("git checkout $DEVELOP_BRANCH")
+git_checkout($DEVELOP_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
-run_command("git merge --no-ff --no-edit $release_branch")
+git_merge($release_branch)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$DEVELOP_BRANCH' failed. Resolve conflicts manually.\n";
 
-run_command("git checkout $MASTER_BRANCH")
+git_checkout($MASTER_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$MASTER_BRANCH'.\n";
-run_command("git merge --no-ff --no-edit $release_branch")
+git_merge($release_branch)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$MASTER_BRANCH' failed. Resolve conflicts manually.\n";
 
-run_command("git tag $version")
+git_tag($version)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create tag '$version'.\n";
 
-unless (run_command("git branch -d $release_branch")) {
+unless (git_delete_branch($release_branch)) {
     print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$release_branch'. You may need to delete it manually.\n";
 }
 
