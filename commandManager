@@ -1,0 +1,250 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use IO::Handle;
+use FindBin;
+use lib "$FindBin::Bin/lib";
+use Terminal;
+use JSON::PP;
+
+STDOUT->autoflush(1);
+
+# ── Config file ───────────────────────────────────────────────────────────────
+
+my $CONFIG_FILE = glob('~/.commandManager');
+
+my $TEMPLATE = {
+    install_commands => [
+        'echo "Running install steps..."',
+        'echo "Install complete."',
+    ],
+    commands => [
+        {
+            name     => 'greet',
+            longName => 'Say Hello',
+            helpText => 'Prints a greeting and the current date. Output goes to STDERR (default when "output" is absent).',
+            commands => [ 'echo "Hello from workflow!"', 'date' ],
+            alias    => 1,
+        },
+        {
+            name     => 'listFiles',
+            longName => 'List Files (detailed)',
+            helpText => 'Lists all files in the current directory. Output explicitly sent to STDERR.',
+            commands => [ 'ls -lah' ],
+            alias    => 'lf',
+            output   => 'STDERR',
+        },
+        {
+            name     => 'setEnv',
+            longName => 'Set Environment',
+            helpText => 'Outputs shell exports for eval. Run as: eval $(./workflow --setEnv)',
+            commands => [ 'echo "export GREETING=hello"' ],
+            alias    => 0,
+            output   => 'STDOUT',
+        },
+    ],
+};
+
+sub write_template {
+    open(my $fh, '>', $CONFIG_FILE)
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not create '$CONFIG_FILE': $!\n";
+    print $fh JSON::PP->new->utf8->pretty->encode($TEMPLATE);
+    close($fh);
+}
+
+sub load_config {
+    unless (-e $CONFIG_FILE) {
+        print STDERR "${FORMAT_YELLOW}Warning:${FORMAT_RESET} '$CONFIG_FILE' not found. Creating template...\n";
+        write_template();
+        print STDERR "${FORMAT_GREEN}Created:${FORMAT_RESET} '$CONFIG_FILE' — edit it and re-run.\n";
+        exit 0;
+    }
+
+    open(my $fh, '<', $CONFIG_FILE)
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read '$CONFIG_FILE': $!\n";
+    my $raw = do { local $/; <$fh> };
+    close($fh);
+
+    my $config = eval { JSON::PP->new->utf8->decode($raw) };
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' contains invalid JSON:\n  $@\n" if $@;
+
+    # Validate top-level structure
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' must contain a 'commands' array.\n"
+        unless ref $config->{commands} eq 'ARRAY';
+    die "${FORMAT_RED}Error:${FORMAT_RESET} '$CONFIG_FILE' must contain an 'install_commands' array.\n"
+        unless ref $config->{install_commands} eq 'ARRAY';
+
+    # Validate each command entry
+    for my $i (0 .. $#{ $config->{commands} }) {
+        my $cmd    = $config->{commands}[$i];
+        my $prefix = "${FORMAT_RED}Error:${FORMAT_RESET} Command #" . ($i + 1) . " in '$CONFIG_FILE'";
+        die "$prefix is missing required field 'name'.\n"
+            unless defined $cmd->{name} && $cmd->{name} =~ /\S/;
+        die "$prefix is missing required field 'helpText'.\n"
+            unless defined $cmd->{helpText} && $cmd->{helpText} =~ /\S/;
+        die "$prefix 'commands' must be a non-empty array.\n"
+            unless ref $cmd->{commands} eq 'ARRAY' && @{ $cmd->{commands} };
+        if (defined $cmd->{output}) {
+            die "$prefix 'output' must be \"STDOUT\" or \"STDERR\".\n"
+                unless $cmd->{output} eq 'STDOUT' || $cmd->{output} eq 'STDERR';
+        }
+    }
+
+    return $config;
+}
+
+# ── Load config ───────────────────────────────────────────────────────────────
+
+my $SCRIPT_PATH = do {
+    use Cwd 'abs_path';
+    abs_path($0);
+};
+
+my $config           = load_config();
+my @COMMANDS         = @{ $config->{commands} };
+my @INSTALL_COMMANDS = @{ $config->{install_commands} };
+
+# ── Verbose flag ──────────────────────────────────────────────────────────────
+
+my $VERBOSE = grep { $_ eq '-v' } @ARGV;
+
+# ── Command lookup ────────────────────────────────────────────────────────────
+
+sub resolve_alias {
+    my ($cmd) = @_;
+    my $a = $cmd->{alias};
+    return undef unless defined $a && $a;   # 0 or absent → no alias
+    return $a eq '1' ? $cmd->{name} : $a;  # 1 → use name, string → use string
+}
+
+sub find_command {
+    my ($name) = @_;
+    for my $cmd (@COMMANDS) {
+        return $cmd if $cmd->{name} eq $name;
+    }
+    return undef;
+}
+
+sub display_name {
+    my ($cmd) = @_;
+    return $cmd->{longName}
+        ? "$cmd->{longName} ($cmd->{name})"
+        : $cmd->{name};
+}
+
+# ── Execution ─────────────────────────────────────────────────────────────────
+
+sub run_shell_command {
+    my ($shell_cmd, $output) = @_;
+    $output //= 'STDERR';
+    print STDERR "  ${FORMAT_YELLOW}\$ $shell_cmd${FORMAT_RESET}\n" if $VERBOSE;
+    my $redirect = $output eq 'STDOUT' ? '' : ' >&2';
+    system($shell_cmd . $redirect);
+    return $? == 0;
+}
+
+sub run_command_entry {
+    my ($cmd) = @_;
+    my $output = $cmd->{output} // 'STDERR';
+    print STDERR "${FORMAT_BOLD}Running: ${FORMAT_RESET}" . display_name($cmd) . "\n";
+    for my $c (@{ $cmd->{commands} }) {
+        run_shell_command($c, $output) or warn "${FORMAT_RED}Warning:${FORMAT_RESET} command exited non-zero.\n";
+    }
+}
+
+# ── Install mode ──────────────────────────────────────────────────────────────
+
+sub run_install {
+    print STDERR "${FORMAT_BOLD}Running install steps...${FORMAT_RESET}\n" if $VERBOSE;
+    for my $c (@INSTALL_COMMANDS) {
+        run_shell_command($c);
+    }
+
+    print STDERR "\n${FORMAT_BOLD}Setting aliases for this session...${FORMAT_RESET}\n" if $VERBOSE;
+    for my $cmd (@COMMANDS) {
+        my $alias = resolve_alias($cmd);
+        next unless defined $alias;
+        my $alias_cmd = "alias $alias='$SCRIPT_PATH --$cmd->{name}'";
+        print STDERR "  ${FORMAT_YELLOW}\$ $alias_cmd${FORMAT_RESET}\n" if $VERBOSE;
+        print "$alias_cmd;\n";
+    }
+    print STDERR "\n${FORMAT_GREEN}Done!${FORMAT_RESET} Aliases are active in this shell session.\n" if $VERBOSE;
+}
+
+# ── Help mode ─────────────────────────────────────────────────────────────────
+
+sub print_help_cmd {
+    my ($cmd) = @_;
+    print STDERR "${FORMAT_BOLD}" . display_name($cmd) . "${FORMAT_RESET}\n";
+    print STDERR "$cmd->{helpText}\n";
+}
+
+sub print_help_all {
+    print STDERR "${FORMAT_BOLD}Available commands:${FORMAT_RESET}\n\n";
+    for my $cmd (@COMMANDS) {
+        print_help_cmd($cmd);
+    }
+}
+
+
+# ── Argument parsing & dispatch ───────────────────────────────────────────────
+
+sub main {
+    my @args = grep { $_ ne '-v' } @ARGV;
+
+    # No arguments → interactive selector
+    unless (@args) {
+        my @options = map { display_name($_) } @COMMANDS;
+        my $idx = interactive_select('Select a command:', \@options);
+        run_command_entry($COMMANDS[$idx]);
+        return;
+    }
+
+    my $first = $args[0];
+
+    # --install / -i
+    if ($first eq '--install' || $first eq '-i') {
+        run_install();
+        return;
+    }
+
+    # --help [name]
+    if ($first eq '--help') {
+        if (defined $args[1]) {
+            my $cmd = find_command($args[1]);
+            unless ($cmd) {
+                print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} No command named '$args[1]'.\n";
+                exit 1;
+            }
+            print_help_cmd($cmd);
+        } else {
+            print_help_all();
+        }
+        return;
+    }
+
+    # --<name>  →  run that command
+    if ($first =~ /^--(.+)$/) {
+        my $name = $1;
+        my $cmd  = find_command($name);
+        unless ($cmd) {
+            print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} Unknown command '$name'.\n";
+            print STDERR "Run without arguments to browse commands interactively, or use --help.\n";
+            exit 1;
+        }
+        run_command_entry($cmd);
+        return;
+    }
+
+    # Unrecognised argument
+    print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} Unrecognised argument '$first'.\n";
+    print STDERR "Usage:\n";
+    print STDERR "  $0                  Interactive selector\n";
+    print STDERR "  $0 --install | -i   Run install steps and set session aliases\n";
+    print STDERR "  $0 --help [name]    Show help for all or one command\n";
+    print STDERR "  $0 --<name>         Run a specific command\n";
+    exit 1;
+}
+
+main();

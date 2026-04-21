@@ -1,0 +1,176 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use IO::Handle;
+use FindBin;
+use lib "$FindBin::Bin/lib";
+use Terminal;
+
+STDOUT->autoflush(1);
+
+# ── Color data ────────────────────────────────────────────────────────────────
+
+my @COLOR_NAMES   = qw(Black Red Green Yellow Blue Purple Cyan White);
+my @COLOR_LETTERS = qw(b     r   g     y      l    p      n    w    );
+my $COLOR_RESET   = '\[\033[00m\]';
+
+my %LETTER_TO_COLOR = (
+    b => '\\[\\033[01;30m\\]',  # Black
+    r => '\\[\\033[01;31m\\]',  # Red
+    g => '\\[\\033[01;32m\\]',  # Green
+    y => '\\[\\033[01;33m\\]',  # Yellow
+    l => '\\[\\033[01;34m\\]',  # Blue
+    p => '\\[\\033[01;35m\\]',  # Purple
+    n => '\\[\\033[01;36m\\]',  # Cyan
+    w => '\\[\\033[01;37m\\]',  # White
+);
+
+# ── PS1 builder ───────────────────────────────────────────────────────────────
+
+sub build_ps1 {
+    my ($var1_code, $var1_color, $var2_code, $var2_color) = @_;
+    if ($var1_code ne '' && $var2_code ne '') {
+        return "${var1_color}${var1_code} ${var2_color}${var2_code}: ${COLOR_RESET}";
+    } elsif ($var1_code ne '') {
+        return "${var1_color}${var1_code}: ${COLOR_RESET}";
+    } else {
+        return "${var2_color}${var2_code}: ${COLOR_RESET}";
+    }
+}
+
+# ── CLI mode ──────────────────────────────────────────────────────────────────
+
+sub run_cli {
+    my $args = join('', @ARGV);
+
+    # Strip leading dashes — support both -drfG and -d -r -f -G
+    $args =~ s/-//g;
+
+    # ── Validate conflicts ────────────────────────────────────────────────────
+
+    my $has_d = $args =~ /d/;
+    my $has_t = $args =~ /t/;
+    my $has_u = $args =~ /u/;
+    my $has_f = $args =~ /f/;
+    my $has_c = $args =~ /c/;
+
+    if ($has_d && $has_t) {
+        print STDERR "Error: -d (date and time) and -t (time only) are mutually exclusive.\n";
+        exit 1;
+    }
+    if ($has_d && $has_u) {
+        print STDERR "Error: -d and -u are mutually exclusive (both set the first variable).\n";
+        exit 1;
+    }
+    if ($has_t && $has_u) {
+        print STDERR "Error: -t and -u are mutually exclusive (both set the first variable).\n";
+        exit 1;
+    }
+    if ($has_f && $has_c) {
+        print STDERR "Error: -f (full path) and -c (current directory) are mutually exclusive.\n";
+        exit 1;
+    }
+
+    # ── Resolve variable codes ────────────────────────────────────────────────
+
+    my $var1_code = $has_d ? '\D{%Y.%m.%d %H:%M}'
+                  : $has_t ? '\D{%H:%M}'
+                  : $has_u ? '\u'
+                  :          '';
+
+    my $var2_code = $has_f ? '\w'
+                  : $has_c ? '\W'
+                  :          '';
+
+    if ($var1_code eq '' && $var2_code eq '') {
+        print STDERR "Error: Both variables are blank. Specify at least one of -d, -t, -u, -f, -c.\n";
+        exit 1;
+    }
+
+    # ── Resolve colors ────────────────────────────────────────────────────────
+    # lowercase letters → first color, uppercase → second color
+    # default to white if not specified
+
+    my ($c1_letter) = ($args =~ /([brgylpnw])/);
+    my ($c2_letter) = ($args =~ /([BRGYLPNW])/);
+
+    my $var1_color = defined $c1_letter ? $LETTER_TO_COLOR{$c1_letter} : $LETTER_TO_COLOR{w};
+    my $var2_color = defined $c2_letter ? $LETTER_TO_COLOR{lc($c2_letter)} : $LETTER_TO_COLOR{w};
+
+    # ── Output ────────────────────────────────────────────────────────────────
+
+    my $ps1 = build_ps1($var1_code, $var1_color, $var2_code, $var2_color);
+    print "export PS1=\"$ps1\"\n";
+}
+
+# ── Interactive mode ──────────────────────────────────────────────────────────
+
+sub run_interactive {
+    print "\n${FORMAT_BOLD}PS1 Customizer${FORMAT_RESET}\n\n";
+
+    # ── Question 1: first variable ────────────────────────────────────────────
+
+    my @var1_options = ('Date and time', 'Time only', 'Username', 'Nothing');
+    my $var1_idx     = interactive_select('Select the first variable:', \@var1_options);
+    my $var1_choice  = $var1_options[$var1_idx];
+    print "\n";
+
+    my ($var1_code, $var1_color_code) = ('', '');
+
+    if ($var1_choice ne 'Nothing') {
+        if    ($var1_choice eq 'Date and time') { $var1_code = '\D{%Y.%m.%d %H:%M}' }
+        elsif ($var1_choice eq 'Time only')     { $var1_code = '\D{%H:%M}'           }
+        elsif ($var1_choice eq 'Username')      { $var1_code = '\u'                   }
+
+        # ── Question 2: color for first variable ──────────────────────────────
+        my $c1_idx       = interactive_select('Select a color for the first variable:', \@COLOR_NAMES);
+        $var1_color_code = $LETTER_TO_COLOR{ $COLOR_LETTERS[$c1_idx] };
+        print "\n";
+    }
+
+    # ── Question 3: second variable ───────────────────────────────────────────
+
+    my @var2_options = ('Full path', 'Current directory', 'Nothing');
+    my $var2_idx     = interactive_select('Select the second variable:', \@var2_options);
+    my $var2_choice  = $var2_options[$var2_idx];
+    print "\n";
+
+    my ($var2_code, $var2_color_code) = ('', '');
+
+    if ($var2_choice ne 'Nothing') {
+        if    ($var2_choice eq 'Full path')         { $var2_code = '\w' }
+        elsif ($var2_choice eq 'Current directory') { $var2_code = '\W' }
+
+        # ── Question 4: color for second variable ─────────────────────────────
+        my $c2_idx       = interactive_select('Select a color for the second variable:', \@COLOR_NAMES);
+        $var2_color_code = $LETTER_TO_COLOR{ $COLOR_LETTERS[$c2_idx] };
+        print "\n";
+    }
+
+    # ── Validation ────────────────────────────────────────────────────────────
+
+    if ($var1_code eq '' && $var2_code eq '') {
+        print "${FORMAT_RED}Error:${FORMAT_RESET} Both variables cannot be blank. Please re-run and select at least one.\n";
+        exit 1;
+    }
+
+    # ── Build and output PS1 ──────────────────────────────────────────────────
+
+    my $ps1 = build_ps1($var1_code, $var1_color_code, $var2_code, $var2_color_code);
+
+    print "${FORMAT_BOLD}Generated PS1:${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}$ps1${FORMAT_RESET}\n\n";
+    print "To apply immediately: ${FORMAT_BOLD}eval \"\$(./prettyPS1 ...)\"${FORMAT_RESET}\n\n";
+    print "To make permanent, add to your ${FORMAT_BOLD}~/.bashrc${FORMAT_RESET} or ${FORMAT_BOLD}~/.bash_profile${FORMAT_RESET}:\n\n";
+    print "  ${FORMAT_CYAN}export PS1=\"$ps1\"${FORMAT_RESET}\n\n";
+    print "Then reload with: ${FORMAT_BOLD}source ~/.bashrc${FORMAT_RESET}\n\n";
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+if (@ARGV) {
+    run_cli();
+} else {
+    run_interactive();
+}

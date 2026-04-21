@@ -1,0 +1,91 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use IO::Handle;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+use Terminal;
+use Git;
+
+STDOUT->autoflush(1);
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+sub first_index {
+    my ($array_ref, $predicate) = @_;
+    for my $i (0 .. $#$array_ref) {
+        return $i if $predicate->($array_ref->[$i]);
+    }
+    return 0;
+}
+
+
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+my $flag_message = 0;
+
+for my $arg (@ARGV) {
+    if    ($arg eq '-m') { $flag_message = 1 }
+    else  { die "Unknown argument: $arg\nUsage: $0 [-m]\n" }
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+my @local_branches  = get_local_branches();
+my $current_branch  = get_current_branch();
+
+my $default_source_index = first_index(\@local_branches, sub { $_[0] eq $current_branch });
+
+# Q1 – branch to merge (source)
+my $source_idx = interactive_select(
+    'Which branch to merge?',
+    \@local_branches,
+    default => $default_source_index,
+    mark    => $current_branch,
+);
+my $source_branch = $local_branches[$source_idx];
+
+# Q2 – branch to merge into (target)
+my $default_target_index = first_index(\@local_branches, sub { $_[0] ne $source_branch });
+
+my $target_idx = interactive_select(
+    'Which branch to merge into?',
+    \@local_branches,
+    default => $default_target_index,
+    exclude => $source_branch,
+    mark    => $current_branch,
+);
+my $target_branch = $local_branches[$target_idx];
+
+# Q3 – optional new branch name with smart prefill
+my $prefix         = ($source_branch =~ m{^(.*/)}) ? $1 : '';
+my @prefix_chunks  = ($prefix =~ m{([^/]+/)}g);
+print "\n";
+my $new_branch_name = prompt_text(
+    'Name of new branch?',
+    \@prefix_chunks,
+    hint       => '(leave blank to skip)',
+    empty_text => '(skipped)',
+);
+
+# ── Execute ───────────────────────────────────────────────────────────────────
+unless (git_checkout($target_branch)) {
+    die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$target_branch'. Aborting.\n";
+}
+
+unless (git_merge($source_branch, edit => $flag_message)) {
+    print "${FORMAT_RED}Merge failed.${FORMAT_RESET} Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
+    exit 1;
+}
+
+unless (git_delete_branch($source_branch)) {
+    print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$source_branch'. Skipping deletion.\n";
+}
+
+if ($new_branch_name ne '') {
+    unless (git_create_branch($new_branch_name)) {
+        die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create new branch '$new_branch_name'.\n";
+    }
+}
+
+my $final_branch = $new_branch_name ne '' ? $new_branch_name : $target_branch;
+print "\n${FORMAT_GREEN}Done!${FORMAT_RESET}\nNow on branch ${FORMAT_BOLD}$final_branch${FORMAT_RESET}\n";
