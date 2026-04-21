@@ -54,6 +54,33 @@ Now on branch feature/motor/pins
 - Merges always use `--no-ff`
 - Branch deletion uses `git branch -d` (safe, never force)
 
+### gitrelease
+
+An interactive tool for cutting releases. Creates a release branch, opens your editor for release notes, then merges into both `develop` and `master` and tags the result.
+
+#### What it does
+
+1. **Select a version** — choose a suggested next version (major bump, minor bump) or enter your own in `vX.Y` format
+2. **Write release notes** — opens your `$EDITOR` with a pre-filled template; the entry is prepended to `releaseNotes.md` automatically
+3. **Proceed or pause** — choose to complete the release now or stay on the release branch to keep working
+4. **Merge and tag** — merges into `develop` and `master` with `--no-ff`, tags the commit, and deletes the release branch
+
+If you're already on a `release/vX.Y` branch, step 1 is skipped and you resume from the proceed/pause prompt.
+
+#### Usage
+
+```bash
+./gitrelease
+```
+
+No flags. Fully interactive.
+
+#### Notes
+
+- Versions must be in `vX.Y` format
+- The release branch is named `release/vX.Y` and is deleted after a successful release
+- Merges always use `--no-ff`
+
 ---
 
 ## commandManager
