@@ -55,9 +55,9 @@ sub write_template {
 
 sub load_config {
     unless (-e $CONFIG_FILE) {
-        print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} '$CONFIG_FILE' not found. Creating template...\n";
+        print STDERR "${FORMAT_YELLOW}Warning:${FORMAT_RESET} '$CONFIG_FILE' not found. Creating template...\n";
         write_template();
-        print "${FORMAT_GREEN}Created:${FORMAT_RESET} '$CONFIG_FILE' — edit it and re-run.\n";
+        print STDERR "${FORMAT_GREEN}Created:${FORMAT_RESET} '$CONFIG_FILE' — edit it and re-run.\n";
         exit 0;
     }
 
@@ -174,25 +174,19 @@ sub run_install {
 
 # ── Help mode ─────────────────────────────────────────────────────────────────
 
+sub print_help_cmd {
+    my ($cmd) = @_;
+    print STDERR "${FORMAT_BOLD}" . display_name($cmd) . "${FORMAT_RESET}\n";
+    print STDERR "$cmd->{helpText}\n";
+}
+
 sub print_help_all {
-    print "${FORMAT_BOLD}Available commands:${FORMAT_RESET}\n\n";
+    print STDERR "${FORMAT_BOLD}Available commands:${FORMAT_RESET}\n\n";
     for my $cmd (@COMMANDS) {
-        print_help_one($cmd->{name});
+        print_help_cmd($cmd);
     }
 }
 
-sub print_help_one {
-    my ($name) = @_;
-    my $cmd = find_command($name);
-    unless ($cmd) {
-        print "${FORMAT_RED}Error:${FORMAT_RESET} No command named '$name'.\n";
-        exit 1;
-    }
-
-    my $display_name = display_name($cmd);
-    print "${FORMAT_BOLD}$display_name${FORMAT_RESET}\n";
-    print "$cmd->{helpText}\n";
-}
 
 # ── Argument parsing & dispatch ───────────────────────────────────────────────
 
@@ -218,7 +212,12 @@ sub main {
     # --help [name]
     if ($first eq '--help') {
         if (defined $args[1]) {
-            print_help_one($args[1]);
+            my $cmd = find_command($args[1]);
+            unless ($cmd) {
+                print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} No command named '$args[1]'.\n";
+                exit 1;
+            }
+            print_help_cmd($cmd);
         } else {
             print_help_all();
         }
@@ -230,8 +229,8 @@ sub main {
         my $name = $1;
         my $cmd  = find_command($name);
         unless ($cmd) {
-            print "${FORMAT_RED}Error:${FORMAT_RESET} Unknown command '$name'.\n";
-            print "Run without arguments to browse commands interactively, or use --help.\n";
+            print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} Unknown command '$name'.\n";
+            print STDERR "Run without arguments to browse commands interactively, or use --help.\n";
             exit 1;
         }
         run_command_entry($cmd);
@@ -239,12 +238,12 @@ sub main {
     }
 
     # Unrecognised argument
-    print "${FORMAT_RED}Error:${FORMAT_RESET} Unrecognised argument '$first'.\n";
-    print "Usage:\n";
-    print "  $0                  Interactive selector\n";
-    print "  $0 --install | -i   Run install steps and set session aliases\n";
-    print "  $0 --help [name]    Show help for all or one command\n";
-    print "  $0 --<name>         Run a specific command\n";
+    print STDERR "${FORMAT_RED}Error:${FORMAT_RESET} Unrecognised argument '$first'.\n";
+    print STDERR "Usage:\n";
+    print STDERR "  $0                  Interactive selector\n";
+    print STDERR "  $0 --install | -i   Run install steps and set session aliases\n";
+    print STDERR "  $0 --help [name]    Show help for all or one command\n";
+    print STDERR "  $0 --<name>         Run a specific command\n";
     exit 1;
 }
 
