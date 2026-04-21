@@ -159,7 +159,7 @@ my $cmd_merge    = $flag_message
     ? "git merge --no-ff $source_branch"
     : "git merge --no-ff --no-edit $source_branch";
 my $cmd_delete   = "git branch -d $source_branch";
-my $cmd_new      = "git checkout -b $new_branch_name";
+my $cmd_new      = $new_branch_name ne '' ? "git checkout -b $new_branch_name" : undef;
 
 # ── Confirmation (only with -i) ───────────────────────────────────────────────
 if ($flag_interactive) {
@@ -167,7 +167,7 @@ if ($flag_interactive) {
     print "  ${FORMAT_YELLOW}\$ $cmd_checkout${FORMAT_RESET}\n";
     print "  ${FORMAT_YELLOW}\$ $cmd_merge${FORMAT_RESET}\n";
     print "  ${FORMAT_YELLOW}\$ $cmd_delete${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $cmd_new${FORMAT_RESET}\n" if $new_branch_name ne '';
+    print "  ${FORMAT_YELLOW}\$ $cmd_new${FORMAT_RESET}\n" if defined $cmd_new;
     print "\nProceed? [y/N] ";
 
     restore_terminal();
@@ -199,11 +199,11 @@ unless (run_command($cmd_delete)) {
     print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$source_branch'. Skipping deletion.\n";
 }
 
-if ($new_branch_name ne '') {
+if (defined $cmd_new) {
     unless (run_command($cmd_new)) {
         die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create new branch '$new_branch_name'.\n";
     }
 }
 
-my $final_branch = ($new_branch_name ne '') ? $new_branch_name : $target_branch;
+my $final_branch = defined $cmd_new ? $new_branch_name : $target_branch;
 print "\n${FORMAT_GREEN}Done!${FORMAT_RESET}\nNow on branch ${FORMAT_BOLD}$final_branch${FORMAT_RESET}\n";
