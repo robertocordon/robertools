@@ -45,69 +45,6 @@ sub run_command {
     return $? == 0;
 }
 
-# ── Smart branch name prompt ──────────────────────────────────────────────────
-sub prompt_new_branch_name {
-    my ($prefill_branch) = @_;
-
-    my $prefill_text = '';
-    if ($prefill_branch =~ m{^(.*/)}) {
-        $prefill_text = $1;
-    }
-
-    enable_raw_mode();
-    show_cursor();
-
-    print "\n${FORMAT_BOLD}Name of new branch?${FORMAT_RESET} ${FORMAT_DIM}(leave blank to skip)${FORMAT_RESET}\n";
-    print "> $prefill_text";
-
-    my $typed_text = '';
-
-    while (1) {
-        my $key_char = '';
-        sysread(STDIN, $key_char, 1);
-
-        if ($key_char eq "\n" || $key_char eq "\r") {
-            print "\n";
-            last;
-
-        } elsif ($key_char eq "\e") {
-            my $seq = '';
-            sysread(STDIN, $seq, 2);   # swallow arrow keys etc.
-
-        } elsif ($key_char eq "\x7f" || $key_char eq "\x08") {
-            if (length($typed_text) > 0) {
-                chop $typed_text;
-                print "\b \b";
-            } elsif (length($prefill_text) > 0) {
-                $prefill_text =~ s{[^/]*/\z}{};
-                clear_line();
-                print "> $prefill_text";
-            }
-
-        } elsif ($key_char ge ' ') {
-            $typed_text .= $key_char;
-            print $key_char;
-        }
-    }
-
-    restore_terminal();
-
-    my $full_input = $prefill_text . $typed_text;
-    $full_input =~ s/^\s+|\s+$//g;
-
-    # Collapse to a single summary line
-    move_up(2);
-    clear_line();
-    print "${FORMAT_BOLD}Name of new branch?${FORMAT_RESET}";
-    if ($full_input ne '') {
-        print " ${FORMAT_GREEN}$full_input${FORMAT_RESET}";
-    } else {
-        print " ${FORMAT_DIM}(skipped)${FORMAT_RESET}";
-    }
-    print "\n";
-
-    return $full_input;
-}
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 my $flag_interactive = 0;
@@ -147,7 +84,15 @@ my $target_idx = interactive_select(
 my $target_branch = $local_branches[$target_idx];
 
 # Q3 – optional new branch name with smart prefill
-my $new_branch_name = prompt_new_branch_name($source_branch);
+my $prefix         = ($source_branch =~ m{^(.*/)}) ? $1 : '';
+my @prefix_chunks  = ($prefix =~ m{([^/]+/)}g);
+print "\n";
+my $new_branch_name = prompt_text(
+    'Name of new branch?',
+    \@prefix_chunks,
+    hint       => '(leave blank to skip)',
+    empty_text => '(skipped)',
+);
 
 # ── Build commands ────────────────────────────────────────────────────────────
 my $cmd_checkout = "git checkout $target_branch";
