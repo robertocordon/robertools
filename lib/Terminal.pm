@@ -153,19 +153,31 @@ sub interactive_select {
 
 # ── Text prompt ───────────────────────────────────────────────────────────────
 #
-# prompt_text($prompt, $prefill) → entered string
+# prompt_text($prompt, \@chunks, %args) → entered string
 #
-# $prefill is shown pre-typed and cannot be deleted by backspace.
+# \@chunks: pre-populated segments shown at the prompt. Backspace removes one
+#   typed character at a time; when the typed buffer is empty, each backspace
+#   removes the rightmost chunk entirely.
+#
+# Optional named args:
+#   hint       => $str   dim text shown after the prompt on the same line
+#   empty_text => $str   dim text used in the summary line when result is empty
 
 sub prompt_text {
-    my ($prompt, $prefill) = @_;
-    $prefill //= '';
+    my ($prompt, $chunks_ref, %args) = @_;
+    my @chunks     = defined $chunks_ref ? @$chunks_ref : ();
+    my $hint       = $args{hint};
+    my $empty_text = $args{empty_text};
 
     enable_raw_mode();
     show_cursor();
 
-    print "${FORMAT_BOLD}$prompt${FORMAT_RESET}\n";
-    print "> $prefill";
+    if (defined $hint) {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_DIM}$hint${FORMAT_RESET}\n";
+    } else {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET}\n";
+    }
+    print "> " . join('', @chunks);
 
     my $typed = '';
 
@@ -183,6 +195,10 @@ sub prompt_text {
             if (length($typed) > 0) {
                 chop $typed;
                 print "\b \b";          # \b moves the cursor left one position; space overwrites the character; \b moves left again
+            } elsif (@chunks) {
+                pop @chunks;
+                clear_line();
+                print "> " . join('', @chunks);
             }
         } elsif ($ch ge ' ') {
             $typed .= $ch;
@@ -192,13 +208,17 @@ sub prompt_text {
 
     restore_terminal();
 
-    my $result = $prefill . $typed;
+    my $result = join('', @chunks) . $typed;
     $result =~ s/^\s+|\s+$//g;
 
     # Collapse to a single summary line
     move_up(2);
     clear_line();
-    print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$result${FORMAT_RESET}\n";
+    if ($result eq '' && defined $empty_text) {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_DIM}$empty_text${FORMAT_RESET}\n";
+    } else {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$result${FORMAT_RESET}\n";
+    }
 
     return $result;
 }
