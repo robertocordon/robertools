@@ -10,7 +10,6 @@ our @EXPORT = qw(
     get_local_branches
     get_repo_root
     get_latest_version
-    run_command
     git_checkout
     git_create_branch
     git_merge
