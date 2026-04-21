@@ -153,17 +153,21 @@ my $target_branch = $local_branches[$target_idx];
 # Q3 – optional new branch name with smart prefill
 my $new_branch_name = prompt_new_branch_name($source_branch);
 
-# ── Confirmation (only with -i) ───────────────────────────────────────────────
-my $merge_command = $flag_message
+# ── Build commands ────────────────────────────────────────────────────────────
+my $cmd_checkout = "git checkout $target_branch";
+my $cmd_merge    = $flag_message
     ? "git merge --no-ff $source_branch"
     : "git merge --no-ff --no-edit $source_branch";
+my $cmd_delete   = "git branch -d $source_branch";
+my $cmd_new      = "git checkout -b $new_branch_name";
 
+# ── Confirmation (only with -i) ───────────────────────────────────────────────
 if ($flag_interactive) {
     print "\n${FORMAT_BOLD}About to run:${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ git checkout $target_branch${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $merge_command${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ git branch -d $source_branch${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ git checkout -b $new_branch_name${FORMAT_RESET}\n" if $new_branch_name ne '';
+    print "  ${FORMAT_YELLOW}\$ $cmd_checkout${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ $cmd_merge${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ $cmd_delete${FORMAT_RESET}\n";
+    print "  ${FORMAT_YELLOW}\$ $cmd_new${FORMAT_RESET}\n" if $new_branch_name ne '';
     print "\nProceed? [y/N] ";
 
     restore_terminal();
@@ -182,21 +186,21 @@ if ($flag_interactive) {
 }
 
 # ── Execute ───────────────────────────────────────────────────────────────────
-unless (run_command("git checkout $target_branch")) {
+unless (run_command($cmd_checkout)) {
     die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$target_branch'. Aborting.\n";
 }
 
-unless (run_command($merge_command)) {
+unless (run_command($cmd_merge)) {
     print "${FORMAT_RED}Merge failed.${FORMAT_RESET} Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
     exit 1;
 }
 
-unless (run_command("git branch -d $source_branch")) {
+unless (run_command($cmd_delete)) {
     print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$source_branch'. Skipping deletion.\n";
 }
 
 if ($new_branch_name ne '') {
-    unless (run_command("git checkout -b $new_branch_name")) {
+    unless (run_command($cmd_new)) {
         die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create new branch '$new_branch_name'.\n";
     }
 }
