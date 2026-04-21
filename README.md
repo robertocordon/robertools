@@ -25,19 +25,16 @@ After a successful merge, the source branch is deleted locally (safe delete only
 #### Usage
 
 ```bash
-./gitmerge [-i] [-m]
+./gitmerge [-m]
 ```
 
-With no flags, the tool asks its three questions and runs the merge immediately — no extra prompts.
+With no flags, the tool asks its three questions and runs the merge immediately.
 
 ##### Flags
 
 | Flag | Description |
 |------|-------------|
-| `-i` | **Interactive mode.** Shows a summary of the commands that will run and asks for confirmation before proceeding. |
 | `-m` | **Message mode.** Opens your text editor to write a custom merge commit message. Without this flag, the default message is used automatically. |
-
-Flags can be combined: `./gitmerge -i -m`
 
 #### Example
 
@@ -56,6 +53,33 @@ Now on branch feature/motor/pins
 - The new branch prompt pre-fills with the folder prefix of the source branch (e.g. merging `feature/motor/pwm` pre-fills `feature/motor/`). Backspace on the pre-filled portion removes one path segment at a time.
 - Merges always use `--no-ff`
 - Branch deletion uses `git branch -d` (safe, never force)
+
+### gitrelease
+
+An interactive tool for cutting releases. Creates a release branch, opens your editor for release notes, then merges into both `develop` and `master` and tags the result.
+
+#### What it does
+
+1. **Select a version** — choose a suggested next version (major bump, minor bump) or enter your own in `vX.Y` format
+2. **Write release notes** — opens your `$EDITOR` with a pre-filled template; the entry is prepended to `releaseNotes.md` automatically
+3. **Proceed or pause** — choose to complete the release now or stay on the release branch to keep working
+4. **Merge and tag** — merges into `develop` and `master` with `--no-ff`, tags the commit, and deletes the release branch
+
+If you're already on a `release/vX.Y` branch, step 1 is skipped and you resume from the proceed/pause prompt.
+
+#### Usage
+
+```bash
+./gitrelease
+```
+
+No flags. Fully interactive.
+
+#### Notes
+
+- Versions must be in `vX.Y` format
+- The release branch is named `release/vX.Y` and is deleted after a successful release
+- Merges always use `--no-ff`
 
 ---
 
@@ -240,10 +264,6 @@ Apply to the current session immediately.
 ---
 
 # Upcoming Tools
-
-## gitrelease
-
-Automates the release process. Creates a release branch off `develop`, appends an entry to the release notes file, then merges into both `develop` and `master`. Tags the resulting commit on `master` with the release version.
 
 ## gitundo
 
