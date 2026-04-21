@@ -9,6 +9,7 @@ our @EXPORT = qw(
     enable_raw_mode restore_terminal
     hide_cursor show_cursor move_up clear_line
     interactive_select
+    prompt_text
     $FORMAT_RESET
     $FORMAT_BOLD
     $FORMAT_DIM
@@ -148,6 +149,78 @@ sub interactive_select {
     print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$options[$selected]${FORMAT_RESET}\n";
 
     return $selected;
+}
+
+# ── Text prompt ───────────────────────────────────────────────────────────────
+#
+# prompt_text($prompt, \@chunks, %args) → entered string
+#
+# \@chunks: pre-populated segments shown at the prompt. Backspace removes one
+#   typed character at a time; when the typed buffer is empty, each backspace
+#   removes the rightmost chunk entirely.
+#
+# Optional named args:
+#   hint       => $str   dim text shown after the prompt on the same line
+#   empty_text => $str   dim text used in the summary line when result is empty
+
+sub prompt_text {
+    my ($prompt, $chunks_ref, %args) = @_;
+    my @chunks     = defined $chunks_ref ? @$chunks_ref : ();
+    my $hint       = $args{hint};
+    my $empty_text = $args{empty_text};
+
+    enable_raw_mode();
+    show_cursor();
+
+    if (defined $hint) {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_DIM}$hint${FORMAT_RESET}\n";
+    } else {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET}\n";
+    }
+    print "> " . join('', @chunks);
+
+    my $typed = '';
+
+    while (1) {
+        my $ch = '';
+        sysread(STDIN, $ch, 1);
+
+        if ($ch eq "\n" || $ch eq "\r") {
+            print "\n";
+            last;
+        } elsif ($ch eq "\e") {         # ESC — start of an escape sequence (e.g. arrow keys); read and discard the next 2 bytes
+            my $seq = '';
+            sysread(STDIN, $seq, 2);
+        } elsif ($ch eq "\x7f" || $ch eq "\x08") {  # \x7f = DEL (backspace on most terminals); \x08 = BS (some terminals/keyboards)
+            if (length($typed) > 0) {
+                chop $typed;
+                print "\b \b";          # \b moves the cursor left one position; space overwrites the character; \b moves left again
+            } elsif (@chunks) {
+                pop @chunks;
+                clear_line();
+                print "> " . join('', @chunks);
+            }
+        } elsif ($ch ge ' ') {
+            $typed .= $ch;
+            print $ch;
+        }
+    }
+
+    restore_terminal();
+
+    my $result = join('', @chunks) . $typed;
+    $result =~ s/^\s+|\s+$//g;
+
+    # Collapse to a single summary line
+    move_up(2);
+    clear_line();
+    if ($result eq '' && defined $empty_text) {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_DIM}$empty_text${FORMAT_RESET}\n";
+    } else {
+        print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$result${FORMAT_RESET}\n";
+    }
+
+    return $result;
 }
 
 1;
