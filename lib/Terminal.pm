@@ -9,6 +9,7 @@ our @EXPORT = qw(
     enable_raw_mode restore_terminal
     hide_cursor show_cursor move_up clear_line
     interactive_select
+    prompt_text
     $FORMAT_RESET
     $FORMAT_BOLD
     $FORMAT_DIM
@@ -148,6 +149,58 @@ sub interactive_select {
     print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$options[$selected]${FORMAT_RESET}\n";
 
     return $selected;
+}
+
+# ── Text prompt ───────────────────────────────────────────────────────────────
+#
+# prompt_text($prompt, $prefill) → entered string
+#
+# $prefill is shown pre-typed and cannot be deleted by backspace.
+
+sub prompt_text {
+    my ($prompt, $prefill) = @_;
+    $prefill //= '';
+
+    enable_raw_mode();
+    show_cursor();
+
+    print "${FORMAT_BOLD}$prompt${FORMAT_RESET}\n";
+    print "> $prefill";
+
+    my $typed = '';
+
+    while (1) {
+        my $ch = '';
+        sysread(STDIN, $ch, 1);
+
+        if ($ch eq "\n" || $ch eq "\r") {
+            print "\n";
+            last;
+        } elsif ($ch eq "\e") {         # ESC — start of an escape sequence (e.g. arrow keys); read and discard the next 2 bytes
+            my $seq = '';
+            sysread(STDIN, $seq, 2);
+        } elsif ($ch eq "\x7f" || $ch eq "\x08") {  # \x7f = DEL (backspace on most terminals); \x08 = BS (some terminals/keyboards)
+            if (length($typed) > 0) {
+                chop $typed;
+                print "\b \b";          # \b moves the cursor left one position; space overwrites the character; \b moves left again
+            }
+        } elsif ($ch ge ' ') {
+            $typed .= $ch;
+            print $ch;
+        }
+    }
+
+    restore_terminal();
+
+    my $result = $prefill . $typed;
+    $result =~ s/^\s+|\s+$//g;
+
+    # Collapse to a single summary line
+    move_up(2);
+    clear_line();
+    print "${FORMAT_BOLD}$prompt${FORMAT_RESET} ${FORMAT_GREEN}$result${FORMAT_RESET}\n";
+
+    return $result;
 }
 
 1;
