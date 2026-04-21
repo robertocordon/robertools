@@ -25,19 +25,16 @@ After a successful merge, the source branch is deleted locally (safe delete only
 #### Usage
 
 ```bash
-./gitmerge [-i] [-m]
+./gitmerge [-m]
 ```
 
-With no flags, the tool asks its three questions and runs the merge immediately — no extra prompts.
+With no flags, the tool asks its three questions and runs the merge immediately.
 
 ##### Flags
 
 | Flag | Description |
 |------|-------------|
-| `-i` | **Interactive mode.** Shows a summary of the commands that will run and asks for confirmation before proceeding. |
 | `-m` | **Message mode.** Opens your text editor to write a custom merge commit message. Without this flag, the default message is used automatically. |
-
-Flags can be combined: `./gitmerge -i -m`
 
 #### Example
 
