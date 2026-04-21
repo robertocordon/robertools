@@ -5,30 +5,11 @@ use IO::Handle;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Terminal;
+use Git;
 
 STDOUT->autoflush(1);
 
-# ── Git helpers ──────────────────────────────────────────────────────────────
-sub get_local_branches {
-    my $raw_output = `git branch 2>/dev/null`;
-    if ($? != 0 || !defined $raw_output || $raw_output eq '') {
-        die "${FORMAT_RED}Error:${FORMAT_RESET} Could not list git branches. Are you inside a git repository?\n";
-    }
-    my @branch_list;
-    for my $branch_line (split /\n/, $raw_output) {
-        $branch_line =~ s/^\*?\s+//;
-        $branch_line =~ s/\s+$//;
-        push @branch_list, $branch_line if $branch_line ne '';
-    }
-    die "${FORMAT_RED}Error:${FORMAT_RESET} No local branches found.\n" unless @branch_list;
-    return @branch_list;
-}
-
-sub get_current_branch {
-    my $branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
-    chomp $branch;
-    return $branch;
-}
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 sub first_index {
     my ($array_ref, $predicate) = @_;
@@ -38,22 +19,14 @@ sub first_index {
     return 0;
 }
 
-sub run_command {
-    my ($command) = @_;
-    print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
-    system($command);
-    return $? == 0;
-}
 
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
-my $flag_interactive = 0;
-my $flag_message     = 0;
+my $flag_message = 0;
 
 for my $arg (@ARGV) {
-    if    ($arg eq '-i') { $flag_interactive = 1 }
-    elsif ($arg eq '-m') { $flag_message     = 1 }
-    else  { die "Unknown argument: $arg\nUsage: $0 [-i] [-m]\n" }
+    if    ($arg eq '-m') { $flag_message = 1 }
+    else  { die "Unknown argument: $arg\nUsage: $0 [-m]\n" }
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -94,57 +67,25 @@ my $new_branch_name = prompt_text(
     empty_text => '(skipped)',
 );
 
-# ── Build commands ────────────────────────────────────────────────────────────
-my $cmd_checkout = "git checkout $target_branch";
-my $cmd_merge    = $flag_message
-    ? "git merge --no-ff $source_branch"
-    : "git merge --no-ff --no-edit $source_branch";
-my $cmd_delete   = "git branch -d $source_branch";
-my $cmd_new      = $new_branch_name ne '' ? "git checkout -b $new_branch_name" : undef;
-
-# ── Confirmation (only with -i) ───────────────────────────────────────────────
-if ($flag_interactive) {
-    print "\n${FORMAT_BOLD}About to run:${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $cmd_checkout${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $cmd_merge${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $cmd_delete${FORMAT_RESET}\n";
-    print "  ${FORMAT_YELLOW}\$ $cmd_new${FORMAT_RESET}\n" if defined $cmd_new;
-    print "\nProceed? [y/N] ";
-
-    restore_terminal();
-    show_cursor();
-    my $confirmation = <STDIN>;
-    chomp $confirmation;
-
-    unless (lc($confirmation) eq 'y') {
-        print "Aborted.\n";
-        exit 0;
-    }
-    print "\n";
-} else {
-    restore_terminal();
-    show_cursor();
-}
-
 # ── Execute ───────────────────────────────────────────────────────────────────
-unless (run_command($cmd_checkout)) {
+unless (git_checkout($target_branch)) {
     die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$target_branch'. Aborting.\n";
 }
 
-unless (run_command($cmd_merge)) {
+unless (git_merge($source_branch, edit => $flag_message)) {
     print "${FORMAT_RED}Merge failed.${FORMAT_RESET} Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
     exit 1;
 }
 
-unless (run_command($cmd_delete)) {
+unless (git_delete_branch($source_branch)) {
     print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$source_branch'. Skipping deletion.\n";
 }
 
-if (defined $cmd_new) {
-    unless (run_command($cmd_new)) {
+if ($new_branch_name ne '') {
+    unless (git_create_branch($new_branch_name)) {
         die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create new branch '$new_branch_name'.\n";
     }
 }
 
-my $final_branch = defined $cmd_new ? $new_branch_name : $target_branch;
+my $final_branch = $new_branch_name ne '' ? $new_branch_name : $target_branch;
 print "\n${FORMAT_GREEN}Done!${FORMAT_RESET}\nNow on branch ${FORMAT_BOLD}$final_branch${FORMAT_RESET}\n";

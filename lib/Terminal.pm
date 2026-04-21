@@ -60,7 +60,7 @@ sub restore_terminal {
     $original_termios->setattr(0, POSIX::TCSANOW) if defined $original_termios;
 }
 
-END { restore_terminal() }
+END { restore_terminal(); show_cursor() }
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 
