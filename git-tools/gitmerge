@@ -5,30 +5,11 @@ use IO::Handle;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use Terminal;
+use Git;
 
 STDOUT->autoflush(1);
 
-# ── Git helpers ──────────────────────────────────────────────────────────────
-sub get_local_branches {
-    my $raw_output = `git branch 2>/dev/null`;
-    if ($? != 0 || !defined $raw_output || $raw_output eq '') {
-        die "${FORMAT_RED}Error:${FORMAT_RESET} Could not list git branches. Are you inside a git repository?\n";
-    }
-    my @branch_list;
-    for my $branch_line (split /\n/, $raw_output) {
-        $branch_line =~ s/^\*?\s+//;
-        $branch_line =~ s/\s+$//;
-        push @branch_list, $branch_line if $branch_line ne '';
-    }
-    die "${FORMAT_RED}Error:${FORMAT_RESET} No local branches found.\n" unless @branch_list;
-    return @branch_list;
-}
-
-sub get_current_branch {
-    my $branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
-    chomp $branch;
-    return $branch;
-}
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 sub first_index {
     my ($array_ref, $predicate) = @_;
@@ -38,12 +19,6 @@ sub first_index {
     return 0;
 }
 
-sub run_command {
-    my ($command) = @_;
-    print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
-    system($command);
-    return $? == 0;
-}
 
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
