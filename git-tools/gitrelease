@@ -1,0 +1,231 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use IO::Handle;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+use Terminal;
+use POSIX qw(strftime);
+use File::Temp qw(tempfile);
+
+STDOUT->autoflush(1);
+
+my $DEVELOP_BRANCH = 'develop';
+my $MASTER_BRANCH  = 'master';
+my $NOTES_FILE     = 'releaseNotes.md';
+
+# ── Git helpers ───────────────────────────────────────────────────────────────
+
+sub get_current_branch {
+    my $branch = `git rev-parse --abbrev-ref HEAD 2>/dev/null`;
+    chomp $branch;
+    return $branch;
+}
+
+sub get_repo_root {
+    my $root = `git rev-parse --show-toplevel 2>/dev/null`;
+    chomp $root;
+    die "${FORMAT_RED}Error:${FORMAT_RESET} Not inside a git repository.\n" unless $root;
+    return $root;
+}
+
+sub run_command {
+    my ($command) = @_;
+    print "  ${FORMAT_YELLOW}\$ $command${FORMAT_RESET}\n";
+    system($command);
+    return $? == 0;
+}
+
+sub get_latest_version {
+    my @tags = grep { /^v\d+\.\d+$/ } split /\n/, `git tag --list 2>/dev/null`;
+    return undef unless @tags;
+    my @sorted = sort {
+        my ($ax, $ay) = $a =~ /^v(\d+)\.(\d+)$/;
+        my ($bx, $by) = $b =~ /^v(\d+)\.(\d+)$/;
+        $ax <=> $bx || $ay <=> $by;
+    } @tags;
+    return $sorted[-1];
+}
+
+# ── Version selection ─────────────────────────────────────────────────────────
+
+sub select_version {
+    my ($latest) = @_;
+
+    my @options;
+    if (defined $latest) {
+        print "Current version: ${FORMAT_BOLD}$latest${FORMAT_RESET}\n\n";
+        my ($major, $minor) = $latest =~ /^v(\d+)\.(\d+)$/;
+        @options = ("v" . ($major + 1) . ".0", "v$major." . ($minor + 1), "other");
+    } else {
+        print "No previous version found — this will be the first release.\n\n";
+        @options = ("v1.0", "other");
+    }
+
+    my $idx = interactive_select('Select the new version:', \@options);
+    return $options[$idx] unless $options[$idx] eq 'other';
+
+    while (1) {
+        my $v = prompt_text('Enter version:', 'v');
+        return $v if $v =~ /^v\d+\.\d+$/;
+        print "${FORMAT_RED}Error:${FORMAT_RESET} Version must be in the format vX.Y (e.g. v2.3).\n";
+    }
+}
+
+# ── Release notes ─────────────────────────────────────────────────────────────
+
+sub build_notes_template {
+    my ($version, $date) = @_;
+    return <<END;
+## [$version] ($date)
+
+> Description
+
+### Upgrade Steps
+*
+
+### Breaking Changes
+*
+
+### New Features
+*
+
+### Bug Fixes
+*
+
+### Performance Improvements
+*
+
+### Other Changes
+*
+END
+}
+
+sub open_editor {
+    my ($content) = @_;
+    my ($fh, $tmpfile) = tempfile('gitrelease-XXXX', SUFFIX => '.md', TMPDIR => 1);
+    print $fh $content;
+    close $fh;
+
+    my $editor = $ENV{EDITOR} || 'vi';
+    system("$editor '$tmpfile'");
+
+    open my $rfh, '<', $tmpfile
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read temp file: $!\n";
+    my $notes = do { local $/; <$rfh> };
+    close $rfh;
+
+    return $notes;
+}
+
+sub update_release_notes {
+    my ($notes_path, $new_entry) = @_;
+    $new_entry =~ s/\s+$/\n/;
+
+    my $existing = '';
+    if (-e $notes_path) {
+        open my $fh, '<', $notes_path
+            or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read '$notes_path': $!\n";
+        $existing = do { local $/; <$fh> };
+        close $fh;
+    }
+
+    my $updated;
+    if ($existing =~ /\A(# Release Notes\n+)(.*)\z/s) {
+        $updated = $1 . $new_entry . "\n" . $2;
+    } else {
+        $updated = "# Release Notes\n\n" . $new_entry . "\n";
+    }
+
+    open my $fh, '>', $notes_path
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not write '$notes_path': $!\n";
+    print $fh $updated;
+    close $fh;
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+my $repo_root      = get_repo_root();
+my $notes_path     = "$repo_root/$NOTES_FILE";
+my $current_branch = get_current_branch();
+
+my ($version, $release_branch);
+
+if ($current_branch =~ m{^release/(v\d+\.\d+)$}) {
+    # ── Step 0: resume an existing release branch ─────────────────────────────
+    $version        = $1;
+    $release_branch = $current_branch;
+    print "${FORMAT_BOLD}Resuming release $version${FORMAT_RESET} on branch ${FORMAT_DIM}$release_branch${FORMAT_RESET}\n";
+
+} else {
+    # ── Steps 1–6: start a new release ───────────────────────────────────────
+
+    # Steps 1–2: determine version
+    my $latest = get_latest_version();
+    $version        = select_version($latest);
+    $release_branch = "release/$version";
+
+    # Step 3: create release branch off develop
+    print "\n";
+    run_command("git checkout $DEVELOP_BRANCH")
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
+    run_command("git checkout -b $release_branch")
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create branch '$release_branch'.\n";
+
+    # Step 4: open editor with release notes template
+    print "\n";
+    my $date     = strftime('%Y-%m-%d', localtime);
+    my $template = build_notes_template($version, $date);
+    my $notes    = open_editor($template);
+
+    # Step 5: insert into releaseNotes.md
+    update_release_notes($notes_path, $notes);
+    print "${FORMAT_GREEN}Updated${FORMAT_RESET} $NOTES_FILE\n";
+
+    # Step 6: commit
+    print "\n";
+    run_command("git add '$notes_path'")
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to stage '$NOTES_FILE'.\n";
+    run_command("git commit -m 'updated release notes'")
+        or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to commit release notes.\n";
+}
+
+# ── Step 7: proceed or pause ──────────────────────────────────────────────────
+
+print "\n";
+my $choice_idx = interactive_select(
+    'What would you like to do?',
+    ['Proceed with release', 'Continue working on release branch'],
+);
+
+# Step 8: pause
+if ($choice_idx == 1) {
+    print "\nStaying on ${FORMAT_BOLD}$release_branch${FORMAT_RESET}. Run gitrelease again when ready.\n";
+    exit 0;
+}
+
+# Steps 9–10: merge and tag
+print "\n";
+
+my $existing_tag = `git tag --list "$version" 2>/dev/null`;
+chomp $existing_tag;
+die "${FORMAT_RED}Error:${FORMAT_RESET} Tag '$version' already exists.\n" if $existing_tag eq $version;
+
+run_command("git checkout $DEVELOP_BRANCH")
+    or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
+run_command("git merge --no-ff --no-edit $release_branch")
+    or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$DEVELOP_BRANCH' failed. Resolve conflicts manually.\n";
+
+run_command("git checkout $MASTER_BRANCH")
+    or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$MASTER_BRANCH'.\n";
+run_command("git merge --no-ff --no-edit $release_branch")
+    or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$MASTER_BRANCH' failed. Resolve conflicts manually.\n";
+
+run_command("git tag $version")
+    or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to create tag '$version'.\n";
+
+unless (run_command("git branch -d $release_branch")) {
+    print "${FORMAT_YELLOW}Warning:${FORMAT_RESET} Could not delete '$release_branch'. You may need to delete it manually.\n";
+}
+
+print "\n${FORMAT_GREEN}Done!${FORMAT_RESET} Released ${FORMAT_BOLD}$version${FORMAT_RESET}.\n";
