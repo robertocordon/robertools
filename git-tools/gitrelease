@@ -123,9 +123,7 @@ sub update_release_notes {
     $new_entry =~ s/\s+$/\n/;
 
     my $existing = '';
-    if (-e $notes_path) {
-        open my $fh, '<', $notes_path
-            or die "${FORMAT_RED}Error:${FORMAT_RESET} Could not read '$notes_path': $!\n";
+    if (open my $fh, '<', $notes_path) {
         $existing = do { local $/; <$fh> };
         close $fh;
     }
