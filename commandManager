@@ -188,7 +188,10 @@ sub print_help_one {
         print "${FORMAT_RED}Error:${FORMAT_RESET} No command named '$name'.\n";
         exit 1;
     }
-    printf "${FORMAT_BOLD}%s${FORMAT_RESET}\n%s\n", display_name($cmd), $cmd->{helpText};
+
+    my $display_name = display_name($cmd);
+    print "${FORMAT_BOLD}$display_name${FORMAT_RESET}\n";
+    print "$cmd->{helpText}\n";
 }
 
 # ── Argument parsing & dispatch ───────────────────────────────────────────────
