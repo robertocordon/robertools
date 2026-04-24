@@ -64,10 +64,11 @@ END { restore_terminal(); show_cursor() }
 
 # ── ANSI helpers ──────────────────────────────────────────────────────────────
 
-sub hide_cursor { print "\e[?25l" }
-sub show_cursor { print "\e[?25h" }
-sub move_up     { my ($n) = @_; print "\e[${n}A" if $n > 0 }
-sub clear_line  { print "\e[2K\r" }
+sub hide_cursor { print STDERR "\e[?25l" }
+sub show_cursor { print STDERR "\e[?25h" }
+sub move_up     { my ($n) = @_; print STDERR "\e[${n}A" if $n > 0 }
+sub clear_line  { print STDERR "\e[2K\r" }
+
 
 # ── Interactive selector ──────────────────────────────────────────────────────
 #
