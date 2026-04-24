@@ -1,5 +1,12 @@
 # Release Notes
 
+## [v1.1] (2026-04-24)
+
+> Description
+
+### Bug Fixes
+* Terminal related characters (eg hide cursor, move up, etc) should be printed to STDERR so they don't interfere with eval'd commands
+
 ## [v1.0] (2026-04-21)
 
 > First release!
