@@ -117,7 +117,7 @@ my $current_branch = get_current_branch();
 
 my ($version, $release_branch);
 
-if ($current_branch =~ m{^release/(v\d+\.\d+)$}) {
+if ($current_branch =~ m{^release/(v\d+(?:\.\d+)+)$}) {
     # ── Step 0: resume an existing release branch ─────────────────────────────
     $version        = $1;
     $release_branch = $current_branch;
