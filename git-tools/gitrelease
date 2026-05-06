@@ -20,15 +20,22 @@ my $NOTES_FILE     = 'releaseNotes.md';
 sub select_version {
     my ($latest) = @_;
 
-    my @options;
+    my (@options, $num_parts);
     if (defined $latest) {
         print "Current version: ${FORMAT_BOLD}$latest${FORMAT_RESET}\n\n";
-        my ($major, $minor) = $latest =~ /^v(\d+)\.(\d+)$/;
-        @options = ("v" . ($major + 1) . ".0", "v$major." . ($minor + 1), "other");
+        my @parts = ($latest =~ /(\d+)/g);
+        $num_parts = scalar @parts;
+        for my $i (reverse 0 .. $#parts) {
+            my @new = @parts;
+            $new[$i]++;
+            $new[$_] = 0 for $i + 1 .. $#new;
+            push @options, 'v' . join('.', @new);
+        }
     } else {
         print "No previous version found — this will be the first release.\n\n";
-        @options = ("v1.0", "v0.1", "other");
+        @options = ('v1.0', 'v0.1');
     }
+    push @options, 'other';
 
     my $idx = interactive_select('Select the new version:', \@options);
     return $options[$idx] unless $options[$idx] eq 'other';
