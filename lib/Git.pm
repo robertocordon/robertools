@@ -52,12 +52,17 @@ sub get_repo_root {
 # ── Tags ──────────────────────────────────────────────────────────────────────
 
 sub get_latest_version {
-    my @tags = grep { /^v\d+\.\d+$/ } split /\n/, `git tag --list 2>/dev/null`;
+    my @tags = grep { /^v\d+(?:\.\d+)+$/ } split /\n/, `git tag --list 2>/dev/null`;
     return undef unless @tags;
     my @sorted = sort {
-        my ($ax, $ay) = $a =~ /^v(\d+)\.(\d+)$/;
-        my ($bx, $by) = $b =~ /^v(\d+)\.(\d+)$/;
-        $ax <=> $bx || $ay <=> $by;
+        my @ap = ($a =~ /(\d+)/g);
+        my @bp = ($b =~ /(\d+)/g);
+        my $len = @ap > @bp ? scalar @ap : scalar @bp;
+        for my $i (0 .. $len - 1) {
+            my $cmp = ($ap[$i] // 0) <=> ($bp[$i] // 0);
+            return $cmp if $cmp;
+        }
+        return 0;
     } @tags;
     return $sorted[-1];
 }
