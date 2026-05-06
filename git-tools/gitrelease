@@ -35,8 +35,8 @@ sub select_version {
 
     while (1) {
         my $v = prompt_text('Enter version:', ['v']);
-        return $v if $v =~ /^v\d+\.\d+$/;
-        print "${FORMAT_RED}Error:${FORMAT_RESET} Version must be in the format vX.Y (e.g. v2.3).\n";
+        return $v if $v =~ /^v\d+(?:\.\d+)+$/;
+        print "${FORMAT_RED}Error:${FORMAT_RESET} Version must be in the format vX.Y[.Z...] (e.g. v2.0, v1.2.3).\n";
     }
 }
 
