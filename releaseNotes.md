@@ -1,5 +1,9 @@
 # Release Notes
 
+## [v1.2] (2026-05-09)
+
+* Git Merge and Git Release tools support pushing the changes that they made
+
 ## [v1.1] (2026-04-24)
 
 > Description

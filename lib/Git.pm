@@ -10,6 +10,7 @@ our @EXPORT = qw(
     get_local_branches
     get_repo_root
     get_latest_version
+    branchHasRemote
     git_checkout
     git_create_branch
     git_merge
@@ -52,14 +53,28 @@ sub get_repo_root {
 # ── Tags ──────────────────────────────────────────────────────────────────────
 
 sub get_latest_version {
-    my @tags = grep { /^v\d+\.\d+$/ } split /\n/, `git tag --list 2>/dev/null`;
+    my @tags = grep { /^v\d+(?:\.\d+)+$/ } split /\n/, `git tag --list 2>/dev/null`;
     return undef unless @tags;
     my @sorted = sort {
-        my ($ax, $ay) = $a =~ /^v(\d+)\.(\d+)$/;
-        my ($bx, $by) = $b =~ /^v(\d+)\.(\d+)$/;
-        $ax <=> $bx || $ay <=> $by;
+        my @ap = ($a =~ /(\d+)/g);
+        my @bp = ($b =~ /(\d+)/g);
+        my $len = @ap > @bp ? scalar @ap : scalar @bp;
+        for my $i (0 .. $len - 1) {
+            my $cmp = ($ap[$i] // 0) <=> ($bp[$i] // 0);
+            return $cmp if $cmp;
+        }
+        return 0;
     } @tags;
     return $sorted[-1];
+}
+
+# ── Remote ───────────────────────────────────────────────────────────────────
+
+sub branchHasRemote {
+    my ($branch) = @_;
+    my $result = `git branch -r --list "origin/$branch" 2>/dev/null`;
+    chomp $result;
+    return $result ne '';
 }
 
 # ── Git commands ─────────────────────────────────────────────────────────────
@@ -86,7 +101,21 @@ sub git_commit {
 sub git_merge {
     my ($branch, %opts) = @_;
     my $flags = $opts{edit} ? '--no-ff' : '--no-ff --no-edit';
-    run_command("git merge $flags $branch");
+    my $ok = run_command("git merge $flags $branch");
+    if ($ok && $opts{push}) {
+        my $current = get_current_branch();
+        return $ok unless branchHasRemote($current);
+        print "  ${FORMAT_YELLOW}\$ git push${FORMAT_RESET}\n";
+        my $push_output = `git push 2>&1`;
+        if ($? != 0) {
+            chomp(my $err = $push_output);
+            my $msg = $err ? ": $err" : '';
+            print "${FORMAT_RED}Could not push $current$msg${FORMAT_RESET}\n";
+        } else {
+            print $push_output if $push_output;
+        }
+    }
+    return $ok;
 }
 
 1;

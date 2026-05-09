@@ -20,23 +20,30 @@ my $NOTES_FILE     = 'releaseNotes.md';
 sub select_version {
     my ($latest) = @_;
 
-    my @options;
+    my (@options, $num_parts);
     if (defined $latest) {
         print "Current version: ${FORMAT_BOLD}$latest${FORMAT_RESET}\n\n";
-        my ($major, $minor) = $latest =~ /^v(\d+)\.(\d+)$/;
-        @options = ("v" . ($major + 1) . ".0", "v$major." . ($minor + 1), "other");
+        my @parts = ($latest =~ /(\d+)/g);
+        $num_parts = scalar @parts;
+        for my $i (reverse 0 .. $#parts) {
+            my @new = @parts;
+            $new[$i]++;
+            $new[$_] = 0 for $i + 1 .. $#new;
+            push @options, 'v' . join('.', @new);
+        }
     } else {
         print "No previous version found — this will be the first release.\n\n";
-        @options = ("v1.0", "v0.1", "other");
+        @options = ('v1.0', 'v0.1');
     }
+    push @options, 'other';
 
     my $idx = interactive_select('Select the new version:', \@options);
     return $options[$idx] unless $options[$idx] eq 'other';
 
     while (1) {
         my $v = prompt_text('Enter version:', ['v']);
-        return $v if $v =~ /^v\d+\.\d+$/;
-        print "${FORMAT_RED}Error:${FORMAT_RESET} Version must be in the format vX.Y (e.g. v2.3).\n";
+        return $v if $v =~ /^v\d+(?:\.\d+)+$/;
+        print "${FORMAT_RED}Error:${FORMAT_RESET} Version must be in the format vX.Y[.Z...] (e.g. v2.0, v1.2.3).\n";
     }
 }
 
@@ -117,7 +124,7 @@ my $current_branch = get_current_branch();
 
 my ($version, $release_branch);
 
-if ($current_branch =~ m{^release/(v\d+\.\d+)$}) {
+if ($current_branch =~ m{^release/(v\d+(?:\.\d+)+)$}) {
     # ── Step 0: resume an existing release branch ─────────────────────────────
     $version        = $1;
     $release_branch = $current_branch;
@@ -173,18 +180,31 @@ if ($choice_idx == 1) {
 # Steps 9–10: merge and tag
 print "\n";
 
+my $push_develop = 0;
+my $push_master  = 0;
+
+if (branchHasRemote($DEVELOP_BRANCH)) {
+    my $idx = interactive_select("Push $DEVELOP_BRANCH after merge?", ['Yes', 'No'], default => 0);
+    $push_develop = ($idx == 0);
+}
+if (branchHasRemote($MASTER_BRANCH)) {
+    my $idx = interactive_select("Push $MASTER_BRANCH after merge?", ['Yes', 'No'], default => 0);
+    $push_master = ($idx == 0);
+}
+print "\n";
+
 my $existing_tag = `git tag --list "$version" 2>/dev/null`;
 chomp $existing_tag;
 die "${FORMAT_RED}Error:${FORMAT_RESET} Tag '$version' already exists.\n" if $existing_tag eq $version;
 
 git_checkout($DEVELOP_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
-git_merge($release_branch)
+git_merge($release_branch, push => $push_develop)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$DEVELOP_BRANCH' failed. Resolve conflicts manually.\n";
 
 git_checkout($MASTER_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$MASTER_BRANCH'.\n";
-git_merge($release_branch)
+git_merge($release_branch, push => $push_master)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$MASTER_BRANCH' failed. Resolve conflicts manually.\n";
 
 git_tag($version)

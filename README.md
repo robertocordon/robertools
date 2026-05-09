@@ -14,11 +14,12 @@ An interactive tool for merging git branches without having to type branch names
 
 #### What it does
 
-Asks you three questions, then runs the merge for you:
+Asks you a few questions, then runs the merge for you:
 
 1. **Which branch to merge?** — pick from your local branches using the arrow keys
 2. **Which branch to merge into?** — same picker, can't accidentally select the same branch twice
 3. **Name of new branch?** — optional; if provided, you'll be checked out to it after the merge
+4. **Push after merge?** — only shown if the destination branch has a remote; defaults to Yes
 
 After a successful merge, the source branch is deleted locally (safe delete only — never forced).
 
@@ -63,7 +64,8 @@ An interactive tool for cutting releases. Creates a release branch, opens your e
 1. **Select a version** — choose a suggested next version (major bump, minor bump) or enter your own in `vX.Y` format
 2. **Write release notes** — opens your `$EDITOR` with a pre-filled template; the entry is prepended to `releaseNotes.md` automatically
 3. **Proceed or pause** — choose to complete the release now or stay on the release branch to keep working
-4. **Merge and tag** — merges into `develop` and `master` with `--no-ff`, tags the commit, and deletes the release branch
+4. **Push options** — if proceeding, asks upfront whether to push `develop` and/or `master` after their respective merges (only shown for branches that have a remote; both default to Yes)
+5. **Merge and tag** — merges into `develop` and `master` with `--no-ff`, tags the commit, and deletes the release branch
 
 If you're already on a `release/vX.Y` branch, step 1 is skipped and you resume from the proceed/pause prompt.
 
