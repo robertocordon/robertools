@@ -101,7 +101,21 @@ sub git_commit {
 sub git_merge {
     my ($branch, %opts) = @_;
     my $flags = $opts{edit} ? '--no-ff' : '--no-ff --no-edit';
-    run_command("git merge $flags $branch");
+    my $ok = run_command("git merge $flags $branch");
+    if ($ok && $opts{push}) {
+        my $current = get_current_branch();
+        return $ok unless branchHasRemote($current);
+        print "  ${FORMAT_YELLOW}\$ git push${FORMAT_RESET}\n";
+        my $push_output = `git push 2>&1`;
+        if ($? != 0) {
+            chomp(my $err = $push_output);
+            my $msg = $err ? ": $err" : '';
+            print "${FORMAT_RED}Could not push $current$msg${FORMAT_RESET}\n";
+        } else {
+            print $push_output if $push_output;
+        }
+    }
+    return $ok;
 }
 
 1;
