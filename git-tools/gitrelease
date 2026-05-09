@@ -180,18 +180,31 @@ if ($choice_idx == 1) {
 # Steps 9–10: merge and tag
 print "\n";
 
+my $push_develop = 0;
+my $push_master  = 0;
+
+if (branchHasRemote($DEVELOP_BRANCH)) {
+    my $idx = interactive_select("Push $DEVELOP_BRANCH after merge?", ['Yes', 'No'], default => 0);
+    $push_develop = ($idx == 0);
+}
+if (branchHasRemote($MASTER_BRANCH)) {
+    my $idx = interactive_select("Push $MASTER_BRANCH after merge?", ['Yes', 'No'], default => 0);
+    $push_master = ($idx == 0);
+}
+print "\n";
+
 my $existing_tag = `git tag --list "$version" 2>/dev/null`;
 chomp $existing_tag;
 die "${FORMAT_RED}Error:${FORMAT_RESET} Tag '$version' already exists.\n" if $existing_tag eq $version;
 
 git_checkout($DEVELOP_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$DEVELOP_BRANCH'.\n";
-git_merge($release_branch)
+git_merge($release_branch, push => $push_develop)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$DEVELOP_BRANCH' failed. Resolve conflicts manually.\n";
 
 git_checkout($MASTER_BRANCH)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$MASTER_BRANCH'.\n";
-git_merge($release_branch)
+git_merge($release_branch, push => $push_master)
     or die "${FORMAT_RED}Error:${FORMAT_RESET} Merge into '$MASTER_BRANCH' failed. Resolve conflicts manually.\n";
 
 git_tag($version)
