@@ -67,12 +67,24 @@ my $new_branch_name = prompt_text(
     empty_text => '(skipped)',
 );
 
+# Q4 – push after merge?
+my $push_after_merge = 0;
+if (branchHasRemote($target_branch)) {
+    print "\n";
+    my $push_idx = interactive_select(
+        "Push $target_branch after merge?",
+        ['Yes', 'No'],
+        default => 0,
+    );
+    $push_after_merge = ($push_idx == 0);
+}
+
 # ── Execute ───────────────────────────────────────────────────────────────────
 unless (git_checkout($target_branch)) {
     die "${FORMAT_RED}Error:${FORMAT_RESET} Failed to check out '$target_branch'. Aborting.\n";
 }
 
-unless (git_merge($source_branch, edit => $flag_message)) {
+unless (git_merge($source_branch, edit => $flag_message, push => $push_after_merge)) {
     print "${FORMAT_RED}Merge failed.${FORMAT_RESET} Leaving '$source_branch' intact. You may need to resolve conflicts.\n";
     exit 1;
 }
