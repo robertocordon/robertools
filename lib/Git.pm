@@ -10,6 +10,7 @@ our @EXPORT = qw(
     get_local_branches
     get_repo_root
     get_latest_version
+    branchHasRemote
     git_checkout
     git_create_branch
     git_merge
@@ -65,6 +66,15 @@ sub get_latest_version {
         return 0;
     } @tags;
     return $sorted[-1];
+}
+
+# ── Remote ───────────────────────────────────────────────────────────────────
+
+sub branchHasRemote {
+    my ($branch) = @_;
+    my $result = `git branch -r --list "origin/$branch" 2>/dev/null`;
+    chomp $result;
+    return $result ne '';
 }
 
 # ── Git commands ─────────────────────────────────────────────────────────────
